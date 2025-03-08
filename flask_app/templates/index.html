@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Semantic Communication Demo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+</head>
+<body>
+    <div class="container">
+        <h1>Semantic Communication Demo</h1>
+        <div class="input-output">
+            <div>
+                <label for="inputText">Text Input</label>
+                <textarea id="inputText" placeholder="Enter text here"></textarea>
+            </div>
+            <div>
+                <label for="outputText">Text Output</label>
+                <textarea id="outputText" placeholder="Output will appear here" readonly></textarea>
+            </div>
+        </div>
+        <div class="button-container">
+            <form id="textForm" method="POST" action="/predict">
+                <button type="submit">Transmit</button>
+            </form>
+        </div>
+        <div class="settings">
+            <button onclick="openSettings()">Settings</button>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('textForm').onsubmit = function(event) {
+            event.preventDefault();
+            var inputText = document.getElementById('inputText').value;
+            fetch('/predict', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ text: inputText })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('outputText').value = data.prediction;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        };
+
+        function openSettings() {
+            alert("Settings section is under development.");
+        }
+    </script>
+</body>
+</html>

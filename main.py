@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
 #parser.add_argument('--data-dir', default='data/train_data.pkl', type=str)
-parser.add_argument('--vocab-file', default='europarl/vocab.json', type=str)
+parser.add_argument('--vocab-file', default='vocab.json', type=str)
 parser.add_argument('--checkpoint-path', default='checkpoints/deepsc-Rayleigh', type=str)
 parser.add_argument('--channel', default='Rayleigh', type=str, help = 'Please choose AWGN, Rayleigh, and Rician')
 parser.add_argument('--MAX-LENGTH', default=30, type=int)
@@ -31,40 +31,16 @@ parser.add_argument('--dff', default=512, type=int)
 parser.add_argument('--num-layers', default=4, type=int)
 parser.add_argument('--num-heads', default=8, type=int)
 parser.add_argument('--batch-size', default=128, type=int)
-parser.add_argument('--epochs', default=80, type=int)
+parser.add_argument('--epochs', default=50, type=int)
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
-
-def validate(epoch, args, net):
-    test_eur = EurDataset('test')
-    test_iterator = DataLoader(test_eur, batch_size=args.batch_size, num_workers=0,
-                                pin_memory=True, collate_fn=collate_data)
-    net.eval()
-    pbar = tqdm(test_iterator)
-    total = 0
-    with torch.no_grad():
-        for sents in pbar:
-            sents = sents.to(device)
-            loss = val_step(net, sents, sents, 0.1, pad_idx,
-                             criterion, args.channel)
-
-            total += loss
-            pbar.set_description(
-                'Epoch: {}; Type: VAL; Loss: {:.5f}'.format(
-                    epoch + 1, loss
-                )
-            )
-
-    return total/len(test_iterator)
-
 
 def train(epoch, args, net, mi_net=None):
     train_eur= EurDataset('train')
@@ -94,15 +70,35 @@ def train(epoch, args, net, mi_net=None):
                     epoch + 1, loss
                 )
             )
+def validate(epoch, args, net):
+    test_eur = EurDataset('test')
+    test_iterator = DataLoader(test_eur, batch_size=args.batch_size, num_workers=0,
+                                pin_memory=True, collate_fn=collate_data)
+    net.eval()
+    pbar = tqdm(test_iterator)
+    total = 0
+    with torch.no_grad():
+        for sents in pbar:
+            sents = sents.to(device)
+            loss = val_step(net, sents, sents, 0.1, pad_idx,
+                             criterion, args.channel)
 
+            total += loss
+            pbar.set_description(
+                'Epoch: {}; Type: VAL; Loss: {:.5f}'.format(
+                    epoch + 1, loss
+                )
+            )
+    return total/len(test_iterator)
 
 if __name__ == '__main__':
     # setup_seed(10)
     args = parser.parse_args()
-    args.vocab_file = '/import/antennas/Datasets/hx301/' + args.vocab_file
+    args.vocab_file = 'data/txt/data_demo/' + args.vocab_file
     """ preparing the dataset """
     vocab = json.load(open(args.vocab_file, 'rb'))
     token_to_idx = vocab['token_to_idx']
+    idx_to_token = {v: k for k, v in token_to_idx.items()}  # 创建索引到token的映射
     num_vocab = len(token_to_idx)
     pad_idx = token_to_idx["<PAD>"]
     start_idx = token_to_idx["<START>"]
@@ -134,6 +130,7 @@ if __name__ == '__main__':
                 torch.save(deepsc.state_dict(), f)
             record_acc = avg_acc
     record_loss = []
+    
 
 
     

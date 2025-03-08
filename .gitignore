@@ -10,6 +10,10 @@ build
 # virtual enviornment
 /.env/*
 /.idea/*
+torch-venv/
+
+# Data files
+data/
 
 # models
 checkpoints/

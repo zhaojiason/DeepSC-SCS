@@ -2,5 +2,6 @@ torch
 nltk
 w3lib
 tqdm
-sklearn
-bert4keras==0.4.2
+scikit-learn
+Flask==2.0.1
+Werkzeug==2.0.1
