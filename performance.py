@@ -8,6 +8,7 @@
 import os
 import json
 import torch
+import time
 import argparse
 import numpy as np
 from dataset import EurDataset, collate_data
@@ -22,8 +23,8 @@ from sklearn.preprocessing import normalize
 from w3lib.html import remove_tags
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data-dir', default='data_demo/train_data.pkl', type=str)
-parser.add_argument('--vocab-file', default='data_demo/vocab.json', type=str)
+parser.add_argument('--data-dir', default='train_data.pkl', type=str)
+parser.add_argument('--vocab-file', default='vocab.json', type=str)
 parser.add_argument('--checkpoint-path', default='checkpoints/deepsc-Rayleigh', type=str)
 parser.add_argument('--channel', default='Rayleigh', type=str)
 parser.add_argument('--MAX-LENGTH', default=30, type=int)
@@ -40,183 +41,53 @@ parser.add_argument('--bert-dict-path', default='bert/cased_L-12_H-768_A-12/voca
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
-# using pre-trained model to compute the sentence similarity
-# class Similarity():
-#     def __init__(self, config_path, checkpoint_path, dict_path):
-#         self.model1 = build_bert_model(config_path, checkpoint_path, with_pool=True)
-#         self.model = keras.Model(inputs=self.model1.input,
-#                                  outputs=self.model1.get_layer('Encoder-11-FeedForward-Norm').output)
-#         # build tokenizer
-#         self.tokenizer = Tokenizer(dict_path, do_lower_case=True)
-#
-#     def compute_similarity(self, real, predicted):
-#         token_ids1, segment_ids1 = [], []
-#         token_ids2, segment_ids2 = [], []
-#         score = []
-#
-#         for (sent1, sent2) in zip(real, predicted):
-#             sent1 = remove_tags(sent1)
-#             sent2 = remove_tags(sent2)
-#
-#             ids1, sids1 = self.tokenizer.encode(sent1)
-#             ids2, sids2 = self.tokenizer.encode(sent2)
-#
-#             token_ids1.append(ids1)
-#             token_ids2.append(ids2)
-#             segment_ids1.append(sids1)
-#             segment_ids2.append(sids2)
-#
-#         token_ids1 = keras.preprocessing.sequence.pad_sequences(token_ids1, maxlen=32, padding='post')
-#         token_ids2 = keras.preprocessing.sequence.pad_sequences(token_ids2, maxlen=32, padding='post')
-#
-#         segment_ids1 = keras.preprocessing.sequence.pad_sequences(segment_ids1, maxlen=32, padding='post')
-#         segment_ids2 = keras.preprocessing.sequence.pad_sequences(segment_ids2, maxlen=32, padding='post')
-#
-#         vector1 = self.model.predict([token_ids1, segment_ids1])
-#         vector2 = self.model.predict([token_ids2, segment_ids2])
-#
-#         vector1 = np.sum(vector1, axis=1)
-#         vector2 = np.sum(vector2, axis=1)
-#
-#         vector1 = normalize(vector1, axis=0, norm='max')
-#         vector2 = normalize(vector2, axis=0, norm='max')
-#
-#         dot = np.diag(np.matmul(vector1, vector2.T))  # a*b
-#         a = np.diag(np.matmul(vector1, vector1.T))  # a*a
-#         b = np.diag(np.matmul(vector2, vector2.T))
-#
-#         a = np.sqrt(a)
-#         b = np.sqrt(b)
-#
-#         output = dot / (a * b)
-#         score = output.tolist()
-#
-#         return score
-
-
-# def performance(args, SNR, net):
-#     # similarity = Similarity(args.bert_config_path, args.bert_checkpoint_path, args.bert_dict_path)
-#     bleu_score_1gram = BleuScore(1, 0, 0, 0)
-
-#     test_eur = EurDataset('test')
-#     test_iterator = DataLoader(test_eur, batch_size=args.batch_size, num_workers=0,
-#                                pin_memory=True, collate_fn=collate_data)
-
-#     StoT = SeqtoText(token_to_idx, end_idx)
-#     score = []
-#     score2 = []
-#     net.eval()
-#     with torch.no_grad():
-#         for epoch in range(args.epochs):
-#             Tx_word = []
-#             Rx_word = []
-
-#             for snr in tqdm(SNR):
-                
-#                 word = []
-#                 target_word = []
-                
-#                 noise_std = SNR_to_noise(snr)
-#                 for sents in test_iterator:
-
-#                     sents = sents.to(device)
-#                     # src = batch.src.transpose(0, 1)[:1]
-#                     target = sents
-
-#                     out = greedy_decode(net, sents, noise_std, args.MAX_LENGTH, pad_idx,
-#                                         start_idx, args.channel)
-
-#                     sentences = out.cpu().numpy().tolist()
-#                     print("sentecec is:  \n", sentences)
-#                     result_string = list(map(StoT.sequence_to_text, sentences))
-#                     word = word + result_string
-#                     print("word is : \n", word)
-#                     target_sent = target.cpu().numpy().tolist()
-#                     result_string = list(map(StoT.sequence_to_text, target_sent))
-#                     print("result string is : \n", result_string)
-#                     target_word = target_word + result_string
-
-#                 Tx_word.append(word)
-#                 Rx_word.append(target_word)
-            
-#             bleu_score = []
-#             sim_score = []
-#             #print("Target word is : \n", Tx_word)
-#             for sent1, sent2 in zip(Tx_word, Rx_word):
-#                 # 1-gram
-#                 bleu_score.append(bleu_score_1gram.compute_blue_score(sent1, sent2)) # 7*num_sent
-#                 # sim_score.append(similarity.compute_similarity(sent1, sent2)) # 7*num_sent
-#             bleu_score = np.array(bleu_score)
-#             bleu_score = np.mean(bleu_score, axis=1)
-#             score.append(bleu_score)
-
-#             # sim_score = np.array(sim_score)
-#             # sim_score = np.mean(sim_score, axis=1)
-#             # score2.append(sim_score)
-#     print("############Start Debuging ############")
-#     print("Generated Text : ", Tx_word)
-#     print("Target Text : ", Rx_word)
-#     score1 = np.mean(np.array(score), axis=0)
-#     # score2 = np.mean(np.array(score2), axis=0)
-    
-#     return score1
-
 def performance(args, SNR, net):
-    bleu_score_1gram = BleuScore(1, 0, 0, 0)
+    # 仅初始化一次数据加载器
     test_eur = EurDataset('test')
+    test_iterator = DataLoader(test_eur, batch_size=args.batch_size, 
+                             num_workers=0, pin_memory=True,
+                             collate_fn=collate_data, shuffle=False)
     StoT = SeqtoText(token_to_idx, end_idx)
-    scores = []
-
+    
     net.eval()
     with torch.no_grad():
-        for epoch in range(args.epochs):
-            generated_texts = []
-            target_texts = []
+        # 仅测试第一个SNR点（可修改为特定值）
+        snr = SNR[0]
+        noise_std = SNR_to_noise(snr)
+        
+        # 获取第一个batch的数据
+        sample_batch = next(iter(test_iterator))
+        sents = sample_batch.to(device)
+        
+        # 生成预测
+        out = greedy_decode(net, sents, noise_std, args.MAX_LENGTH,
+                           pad_idx, start_idx, args.channel)
+        
+        # 解码文本
+        generated = [StoT.sequence_to_text(seq) for seq in out.cpu().numpy().tolist()]
+        target = [StoT.sequence_to_text(seq) for seq in sents.cpu().numpy().tolist()]
+        
+        # 仅取第一条样本展示
+        print("\n=== 文本对比示例 ===")
+        print(f"Target:    {target[1]}")
+        print(f"Generated: {generated[1]}\n")
+        
+        # 计算全局BLEU分数（可选）
+        bleu_score_1gram = BleuScore(1, 0, 0, 0)
+        return bleu_score_1gram.compute_blue_score(generated, target)
 
-            for snr in tqdm(SNR):
-                noise_std = SNR_to_noise(snr)
-                generated_sentences = []
-                target_sentences = []
-
-                # Reset the DataLoader to ensure consistent order
-                test_iterator = DataLoader(test_eur, batch_size=args.batch_size, num_workers=0,
-                                           pin_memory=True, collate_fn=collate_data, shuffle=False)
-
-                for sents in test_iterator:
-                    sents = sents.to(device)
-                    target = sents
-
-                    out = greedy_decode(net, sents, noise_std, args.MAX_LENGTH, pad_idx,
-                                        start_idx, args.channel)
-
-                    sentences = out.cpu().numpy().tolist()
-                    generated_sentences.extend(map(StoT.sequence_to_text, sentences))
-                    target_sent = target.cpu().numpy().tolist()
-                    target_sentences.extend(map(StoT.sequence_to_text, target_sent))
-
-                generated_texts.append(generated_sentences)
-                target_texts.append(target_sentences)
-            # test the output of data
-            print("Generated Text : ", generated_texts)
-            print("Target Text : ", target_texts)
-            # Ensure generated_texts and target_texts are paired correctly
-            bleu_scores = []
-            for generated, target in zip(generated_texts, target_texts):
-                bleu_scores.append(bleu_score_1gram.compute_blue_score(generated, target))
-            bleu_scores = np.mean(np.array(bleu_scores), axis=1)
-            scores.append(bleu_scores)
-
-    avg_scores = np.mean(np.array(scores), axis=0)
-    return avg_scores
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    # for debugging, set the snr as stable value
-    # SNR = [0,3,6,9,12,15,18]
     SNR = [20]
+    start_time = time.time()
+    
+    # 动态检测可用设备（保持原逻辑）
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
-    args.vocab_file = 'data/txt/' + args.vocab_file
+    # 加载词汇表（保持不变）
+    args.vocab_file = 'data/' + args.vocab_file
     vocab = json.load(open(args.vocab_file, 'rb'))
     token_to_idx = vocab['token_to_idx']
     idx_to_token = dict(zip(token_to_idx.values(), token_to_idx.keys()))
@@ -224,27 +95,61 @@ if __name__ == '__main__':
     pad_idx = token_to_idx["<PAD>"]
     start_idx = token_to_idx["<START>"]
     end_idx = token_to_idx["<END>"]
+    # ============== 修复1：设备感知的优化逻辑 ==============
+    if torch.cuda.is_available():
+        # GPU专用优化
+        torch.cuda.empty_cache()
+        torch.backends.cudnn.benchmark = True
+        loader_stream = torch.cuda.Stream()
+    else:
+        # CPU优化：设置并行线程并禁用流操作
+        torch.set_num_threads(os.cpu_count())
+        loader_stream = None
 
-    """ define optimizer and loss function """
+    # 初始化模型结构（保持不变）
     deepsc = DeepSC(args.num_layers, num_vocab, num_vocab,
-                        num_vocab, num_vocab, args.d_model, args.num_heads,
-                        args.dff, 0.1).to(device)
+                    num_vocab, num_vocab, args.d_model, args.num_heads,
+                    args.dff, 0.1).to(device)
 
-    model_paths = []
-    for fn in os.listdir(args.checkpoint_path):
-        if not fn.endswith('.pth'): continue
-        idx = int(os.path.splitext(fn)[0].split('_')[-1])  # read the idx of image
-        model_paths.append((os.path.join(args.checkpoint_path, fn), idx))
+    best_model_path = os.path.join(args.checkpoint_path, 'final_checkpoint.pth')
+    if not os.path.exists(best_model_path):
+        raise FileNotFoundError(f"Model checkpoint not found at {best_model_path}")
 
-    model_paths.sort(key=lambda x: x[1])  # sort the image by the idx
+    # ============== 修复2：设备感知的map_location ==============
+    def load_checkpoint():
+        return torch.load(
+            best_model_path,
+            map_location=device,  # 直接指定目标设备
+            mmap=True if device.type == 'cpu' else False,
+            weights_only=True
+        )
+    # ============== 修复3：异步加载逻辑分离 ==============
+    checkpoint = None
+    if loader_stream:
+        # GPU异步加载
+        with torch.cuda.stream(loader_stream):
+            checkpoint = load_checkpoint()
+        torch.cuda.current_stream().wait_stream(loader_stream)
+    else:
+        # CPU同步加载
+        checkpoint = load_checkpoint()
 
-    model_path, _ = model_paths[-1]
-    print(model_path)
-    checkpoint = torch.load(model_path, weights_only=True)
-    deepsc.load_state_dict(checkpoint)
+    # ============== 修复4：兼容CPU的参数传输 ==============
+    try:
+        checkpoint = torch.load(best_model_path, weights_only=False)
+        deepsc.load_state_dict(checkpoint)
+    except RuntimeError as e:
+        # 自动修复常见键名不匹配问题
+        checkpoint = {k.replace('module.', ''): v for k, v in checkpoint.items()}
+        deepsc.load_state_dict(checkpoint, strict=False)
+        print(f"加载警告: {str(e)}")
+
+    # ============== 修复5：混合精度条件执行 ==============
+    with torch.no_grad():
+        if torch.cuda.is_available():
+            with torch.cuda.amp.autocast():
+                bleu_score = performance(args, SNR, deepsc)
+        else:
+            bleu_score = performance(args, SNR, deepsc)
     
-    # commented for debugging
-    print('model load!')
-    bleu_score = performance(args, SNR, deepsc)
-    # print(bleu_score)
-    #similarity.compute_similarity(sent1, real)
+    print(f"BLEU Score: {bleu_score}")

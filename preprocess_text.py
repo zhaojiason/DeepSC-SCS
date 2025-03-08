@@ -22,10 +22,10 @@ import json
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--input-data-dir', default='data_demo', type=str)
-parser.add_argument('--output-train-dir', default='data_demo/train_data.pkl', type=str)
-parser.add_argument('--output-test-dir', default='data_demo/test_data.pkl', type=str)
-parser.add_argument('--output-vocab', default='data_demo/vocab.json', type=str)
+parser.add_argument('--input-data-dir', default='', type=str)
+parser.add_argument('--output-train-dir', default='train_data.pkl', type=str)
+parser.add_argument('--output-test-dir', default='test_data.pkl', type=str)
+parser.add_argument('--output-vocab', default='vocab.json', type=str)
 parser.add_argument('--input-encoding', default='utf-8', type=str, help='Encoding for input files')
 parser.add_argument('--output-encoding', default='utf-8', type=str, help='Encoding for output files')
 
@@ -141,7 +141,7 @@ def decode(seq_idx, idx_to_token, delim=None, stop_at_end=True):
         return delim.join(tokens)
 
 def main(args):
-    data_dir = 'data/txt/'
+    data_dir = 'data/'
     args.input_data_dir = os.path.join(data_dir, args.input_data_dir)
     args.output_train_dir = os.path.join(data_dir, args.output_train_dir)
     args.output_test_dir = os.path.join(data_dir, args.output_test_dir)

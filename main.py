@@ -30,11 +30,12 @@ parser.add_argument('--d-model', default=128, type=int)
 parser.add_argument('--dff', default=512, type=int)
 parser.add_argument('--num-layers', default=4, type=int)
 parser.add_argument('--num-heads', default=8, type=int)
-parser.add_argument('--batch-size', default=128, type=int)
-parser.add_argument('--epochs', default=50, type=int)
+parser.add_argument('--batch-size', default=32, type=int)
+parser.add_argument('--epochs', default=10, type=int)
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 def setup_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -94,43 +95,80 @@ def validate(epoch, args, net):
 if __name__ == '__main__':
     # setup_seed(10)
     args = parser.parse_args()
-    args.vocab_file = 'data/txt/data_demo/' + args.vocab_file
-    """ preparing the dataset """
+    args.vocab_file = 'data/' + args.vocab_file
+    
+    """ 准备检查点目录 """
+    if not os.path.exists(args.checkpoint_path):
+        os.makedirs(args.checkpoint_path)
+    
+    """ 准备数据集 """
     vocab = json.load(open(args.vocab_file, 'rb'))
     token_to_idx = vocab['token_to_idx']
-    idx_to_token = {v: k for k, v in token_to_idx.items()}  # 创建索引到token的映射
+    idx_to_token = {v: k for k, v in token_to_idx.items()}
     num_vocab = len(token_to_idx)
     pad_idx = token_to_idx["<PAD>"]
     start_idx = token_to_idx["<START>"]
     end_idx = token_to_idx["<END>"]
 
-
-    """ define optimizer and loss function """
+    """ 定义模型和优化器 """
     deepsc = DeepSC(args.num_layers, num_vocab, num_vocab,
-                        num_vocab, num_vocab, args.d_model, args.num_heads,
-                        args.dff, 0.1).to(device)
+                    num_vocab, num_vocab, args.d_model, args.num_heads,
+                    args.dff, 0.1).to(device)
     mi_net = Mine().to(device)
-    criterion = nn.CrossEntropyLoss(reduction = 'none')
+    criterion = nn.CrossEntropyLoss(reduction='none')
     optimizer = torch.optim.Adam(deepsc.parameters(),
-                                 lr=1e-4, betas=(0.9, 0.98), eps=1e-8, weight_decay = 5e-4)
+                                 lr=1e-4, betas=(0.9, 0.98), eps=1e-8, weight_decay=5e-4)
     mi_opt = torch.optim.Adam(mi_net.parameters(), lr=1e-3)
-    #opt = NoamOpt(args.d_model, 1, 4000, optimizer)
     initNetParams(deepsc)
-    for epoch in range(args.epochs):
-        start = time.time()
-        record_acc = 10
-
-        train(epoch, args, deepsc)
-        avg_acc = validate(epoch, args, deepsc)
-
-        if avg_acc < record_acc:
-            if not os.path.exists(args.checkpoint_path):
-                os.makedirs(args.checkpoint_path)
-            with open(args.checkpoint_path + '/checkpoint_{}.pth'.format(str(epoch + 1).zfill(2)), 'wb') as f:
-                torch.save(deepsc.state_dict(), f)
-            record_acc = avg_acc
-    record_loss = []
     
+    """ 断点续训设置 """
+    best_checkpoint_path = os.path.join(args.checkpoint_path, 'best_checkpoint.pth')
+    last_checkpoint_path = os.path.join(args.checkpoint_path, 'last_checkpoint.pth')  # 单一检查点文件
+    final_checkpoint = os.path.join(args.checkpoint_path, 'final_checkpoint.pth')
+    start_epoch = 0
+    record_acc = float('inf')
+
+    """ 加载最近检查点（如果存在） """
+    if os.path.exists(last_checkpoint_path):
+        checkpoint = torch.load(last_checkpoint_path)
+        deepsc.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        record_acc = checkpoint['record_acc']
+        print(f'Rounds: {start_epoch} Resume training...')
+
+    try:
+        """ 训练循环（不保存每个epoch的检查点） """
+        for epoch in range(start_epoch, args.epochs):
+            start = time.time()
+            train(epoch, args, deepsc)
+            avg_acc = validate(epoch, args, deepsc)
+
+            # 保存最佳模型
+            if avg_acc < record_acc:
+                torch.save(deepsc.state_dict(), best_checkpoint_path)
+                record_acc = avg_acc
+                print(f'Rounds: {epoch+1} update the best model')
+
+        """ 正常完成训练后清理临时检查点 """
+        if os.path.exists(last_checkpoint_path):
+            os.remove(last_checkpoint_path)
+            print('Training completed, temporary checkpoints cleared')
+
+    except (KeyboardInterrupt, Exception) as e:
+        """ 仅在中断时保存检查点 """
+        print(f'\nTraining Interrupt: {str(e)}')
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': deepsc.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'record_acc': record_acc
+        }, last_checkpoint_path)  # 覆盖写入同一文件
+        print(f'Save Interrupt Status(Round: {epoch})')
+
+    """ 最终保存（无论是否中断） """
+    torch.save(deepsc.state_dict(), final_checkpoint)
+    print('Save the final model to', final_checkpoint)
 
 
     
