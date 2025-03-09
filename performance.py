@@ -76,17 +76,60 @@ def performance(args, SNR, net):
         bleu_score_1gram = BleuScore(1, 0, 0, 0)
         return bleu_score_1gram.compute_blue_score(generated, target)
 
+def interactive_performance(args, SNR, net):
+    StoT = SeqtoText(token_to_idx, end_idx)
+    net.eval()
+    
+    with torch.no_grad():
+        # 使用第一个SNR值
+        snr = SNR[0]
+        noise_std = SNR_to_noise(snr)
+        
+        while True:
+            # 获取用户输入
+            user_input = input("\n请输入测试文本（输入'exit'退出）: ")
+            if user_input.lower() == 'exit':
+                break
+            
+            try:
+                # 将文本转换为模型输入格式
+                seq = StoT.text_to_sequence(user_input, add_start_token=True, add_end_token=True)
+                
+                # 转换为张量并添加batch维度
+                seq_tensor = torch.tensor([seq], dtype=torch.long).to(device)
+                
+                # 生成预测结果
+                out = greedy_decode(net, seq_tensor, noise_std, args.MAX_LENGTH,
+                                  pad_idx, start_idx, args.channel)
+                
+                # 解码生成文本
+                generated = StoT.sequence_to_text(out.cpu().numpy().tolist()[0])
+                
+                # 清理填充符号和结束符
+                generated = generated.split('<END>')[0].replace('<START>','').replace('<PAD>', '').strip()
+                
+                # 显示结果
+                print("\n=== 文本生成结果 ===")
+                print(f"[原始输入] {user_input}")
+                print(f"[生成结果] {generated}")
+                
+            except Exception as e:
+                print(f"处理出错: {str(e)}")
+                continue
+
+        print("\n已退出交互测试模式")
+        return 0  # 返回0作为占位，原BLEU功能已移除
 
 if __name__ == '__main__':
     args = parser.parse_args()
     SNR = [20]
     start_time = time.time()
     
-    # 动态检测可用设备（保持原逻辑）
+    # 动态检测可用设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # 加载词汇表（保持不变）
+    # 加载词汇表
     args.vocab_file = 'data/' + args.vocab_file
     vocab = json.load(open(args.vocab_file, 'rb'))
     token_to_idx = vocab['token_to_idx']
@@ -106,12 +149,12 @@ if __name__ == '__main__':
         torch.set_num_threads(os.cpu_count())
         loader_stream = None
 
-    # 初始化模型结构（保持不变）
+    # 初始化模型结构
     deepsc = DeepSC(args.num_layers, num_vocab, num_vocab,
                     num_vocab, num_vocab, args.d_model, args.num_heads,
                     args.dff, 0.1).to(device)
 
-    best_model_path = os.path.join(args.checkpoint_path, 'final_checkpoint.pth')
+    best_model_path = os.path.join(args.checkpoint_path, 'best_checkpoint.pth')
     if not os.path.exists(best_model_path):
         raise FileNotFoundError(f"Model checkpoint not found at {best_model_path}")
 
@@ -150,6 +193,8 @@ if __name__ == '__main__':
             with torch.cuda.amp.autocast():
                 bleu_score = performance(args, SNR, deepsc)
         else:
+            # 进行用户交互测试
+            interactive_performance(args, SNR, deepsc)
             bleu_score = performance(args, SNR, deepsc)
     
     print(f"BLEU Score: {bleu_score}")
