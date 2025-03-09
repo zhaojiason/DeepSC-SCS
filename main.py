@@ -30,7 +30,7 @@ parser.add_argument('--d-model', default=128, type=int)
 parser.add_argument('--dff', default=512, type=int)
 parser.add_argument('--num-layers', default=4, type=int)
 parser.add_argument('--num-heads', default=8, type=int)
-parser.add_argument('--batch-size', default=32, type=int)
+parser.add_argument('--batch-size', default=64, type=int)
 parser.add_argument('--epochs', default=10, type=int)
 
 
