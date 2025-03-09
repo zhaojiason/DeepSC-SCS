@@ -14,6 +14,7 @@ import numpy as np
 from w3lib.html import remove_tags
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from models.mutual_info import sample_batch, mutual_information
+from preprocess_text import tokenize, encode
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -130,6 +131,7 @@ class SeqtoText:
     def __init__(self, vocb_dictionary, end_idx):
         self.reverse_word_map = dict(zip(vocb_dictionary.values(), vocb_dictionary.keys()))
         self.end_idx = end_idx
+        self.vocb_dictionary = vocb_dictionary
         
     def sequence_to_text(self, list_of_indices):
         # Looking up words in dictionary
@@ -140,7 +142,13 @@ class SeqtoText:
             else:
                 words.append(self.reverse_word_map.get(idx))
         words = ' '.join(words)
-        return(words) 
+        return(words)
+    def text_to_sequence(self, text, add_start_token=True, add_end_token=True):
+        # Tokenize the input text
+        tokens = tokenize(text, punct_to_keep=[';', ','], punct_to_remove=['?', '.'],
+                          add_start_token=add_start_token, add_end_token=add_end_token)
+        sequence = encode(tokens, self.vocb_dictionary, allow_unk=True)
+        return sequence
 
 
 class Channels():
@@ -359,7 +367,7 @@ def greedy_decode(model, src, n_var, max_len, padding_idx, start_symbol, channel
     else:
         raise ValueError("Please choose from AWGN, Rayleigh, and Rician")
             
-    #channel_enc_output = model.blind_csi(channel_enc_output)
+    # channel_enc_output = model.blind_csi(channel_enc_output)
           
     memory = model.channel_decoder(Rx_sig)
     
@@ -369,7 +377,7 @@ def greedy_decode(model, src, n_var, max_len, padding_idx, start_symbol, channel
         # create the decode mask
         trg_mask = (outputs == padding_idx).unsqueeze(-2).type(torch.FloatTensor) #[batch, 1, seq_len]
         look_ahead_mask = subsequent_mask(outputs.size(1)).type(torch.FloatTensor)
-#        print(look_ahead_mask)
+        # print(look_ahead_mask)
         combined_mask = torch.max(trg_mask, look_ahead_mask)
         combined_mask = combined_mask.to(device)
 
@@ -380,12 +388,10 @@ def greedy_decode(model, src, n_var, max_len, padding_idx, start_symbol, channel
         # predict the word
         prob = pred[: ,-1:, :]  # (batch_size, 1, vocab_size)
         #prob = prob.squeeze()
-
+        
         # return the max-prob index
         _, next_word = torch.max(prob, dim = -1)
         #next_word = next_word.unsqueeze(1)
-        
-        #next_word = next_word.data[0]
         outputs = torch.cat([outputs, next_word], dim=1)
 
     return outputs
