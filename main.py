@@ -121,54 +121,58 @@ if __name__ == '__main__':
     mi_opt = torch.optim.Adam(mi_net.parameters(), lr=1e-3)
     initNetParams(deepsc)
     
-    """ 断点续训设置 """
-    best_checkpoint_path = os.path.join(args.checkpoint_path, 'best_checkpoint.pth')
-    last_checkpoint_path = os.path.join(args.checkpoint_path, 'last_checkpoint.pth')  # 单一检查点文件
-    final_checkpoint = os.path.join(args.checkpoint_path, 'final_checkpoint.pth')
-    start_epoch = 0
-    record_acc = float('inf')
+""" 断点续训配置 """
+best_checkpoint_path = os.path.join(args.checkpoint_path, 'best_checkpoint.pth')
+last_checkpoint_path = os.path.join(args.checkpoint_path, 'last_checkpoint.pth')  # 单一文件用于恢复
+final_checkpoint = os.path.join(args.checkpoint_path, 'final_checkpoint.pth')
+start_epoch = 0
+record_acc = float('inf')
 
-    """ 加载最近检查点（如果存在） """
-    if os.path.exists(last_checkpoint_path):
-        checkpoint = torch.load(last_checkpoint_path)
-        deepsc.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint['epoch'] + 1
-        record_acc = checkpoint['record_acc']
-        print(f'Rounds: {start_epoch} Resume training...')
+""" 加载最近检查点（如果存在） """
+if os.path.exists(last_checkpoint_path):
+    checkpoint = torch.load(last_checkpoint_path)
+    deepsc.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    start_epoch = checkpoint['epoch'] + 1  # 从下一轮开始
+    record_acc = checkpoint['record_acc']
+    print(f'Resuming from epoch {start_epoch}...')
 
-    try:
-        """ 训练循环（不保存每个epoch的检查点） """
-        for epoch in range(start_epoch, args.epochs):
-            start = time.time()
-            train(epoch, args, deepsc)
-            avg_acc = validate(epoch, args, deepsc)
+try:
+    """ 训练循环（每个epoch后保存检查点） """
+    for epoch in range(start_epoch, args.epochs):
+        start_time = time.time()
+        train(epoch, args, deepsc)
+        avg_acc = validate(epoch, args, deepsc)
 
-            # 保存最佳模型
-            if avg_acc < record_acc:
-                torch.save(deepsc.state_dict(), best_checkpoint_path)
-                record_acc = avg_acc
-                print(f'Rounds: {epoch+1} update the best model')
+        # 保存最佳模型
+        if avg_acc < record_acc:
+            torch.save(deepsc.state_dict(), best_checkpoint_path)
+            record_acc = avg_acc
+            print(f'Epoch {epoch+1}: New best model saved')
 
-        """ 正常完成训练后清理临时检查点 """
-        if os.path.exists(last_checkpoint_path):
-            os.remove(last_checkpoint_path)
-            print('Training completed, temporary checkpoints cleared')
-
-    except (KeyboardInterrupt, Exception) as e:
-        """ 仅在中断时保存检查点 """
-        print(f'\nTraining Interrupt: {str(e)}')
+        # 每个epoch后保存恢复点（覆盖写入）
         torch.save({
             'epoch': epoch,
             'model_state_dict': deepsc.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'record_acc': record_acc
-        }, last_checkpoint_path)  # 覆盖写入同一文件
-        print(f'Save Interrupt Status(Round: {epoch})')
+        }, last_checkpoint_path)
+        print(f'Epoch {epoch+1}: Checkpoint saved')
 
-    """ 最终保存（无论是否中断） """
+    """ 正常完成训练后清理临时检查点 """
+    if os.path.exists(last_checkpoint_path):
+        os.remove(last_checkpoint_path)
+        print('Training completed, temporary checkpoints cleared')
+
+except (KeyboardInterrupt, Exception) as e:
+    """ 中断时保留检查点并提示恢复方法 """
+    print(f'\nTraining interrupted at epoch {epoch}: {str(e)}')
+    print(f'Last checkpoint saved to {last_checkpoint_path}, resume training with this file.')
+
+finally:
+    """ 无论是否中断，最终保存模型 """
     torch.save(deepsc.state_dict(), final_checkpoint)
-    print('Save the final model to', final_checkpoint)
+    print(f'Final model saved to {final_checkpoint}')
 
 
     
