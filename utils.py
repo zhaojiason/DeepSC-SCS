@@ -147,7 +147,7 @@ class SeqtoText:
         # Tokenize the input text
         tokens = tokenize(text, punct_to_keep=[';', ','], punct_to_remove=['?', '.'],
                           add_start_token=add_start_token, add_end_token=add_end_token)
-        sequence = encode(tokens, self.vocb_dictionary, allow_unk=True)
+        sequence = encode(tokens, self.vocb_dictionary, allow_unk=False)
         return sequence
 
 

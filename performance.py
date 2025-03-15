@@ -1,10 +1,6 @@
 # !usr/bin/env python
 # -*- coding:utf-8 _*-
-"""
-@Author: Huiqiang Xie
-@File: performance.py
-@Time: 2021/4/1 11:48
-"""
+
 import os
 import json
 import torch
@@ -20,7 +16,6 @@ from sklearn.preprocessing import normalize
 # from bert4keras.backend import keras
 # from bert4keras.models import build_bert_model
 # from bert4keras.tokenizers import Tokenizer
-from w3lib.html import remove_tags
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', default='train_data.pkl', type=str)
@@ -51,9 +46,8 @@ def performance(args, SNR, net):
     
     net.eval()
     with torch.no_grad():
-        # 仅测试第一个SNR点（可修改为特定值）
-        snr = SNR[0]
-        noise_std = SNR_to_noise(snr)
+
+        noise_std = SNR_to_noise(SNR)
         
         # 获取第一个batch的数据
         sample_batch = next(iter(test_iterator))
@@ -81,9 +75,8 @@ def interactive_performance(args, SNR, net):
     net.eval()
     
     with torch.no_grad():
-        # 使用第一个SNR值
-        snr = SNR[0]
-        noise_std = SNR_to_noise(snr)
+
+        noise_std = SNR_to_noise(SNR)
         
         while True:
             # 获取用户输入
@@ -120,9 +113,38 @@ def interactive_performance(args, SNR, net):
         print("\n已退出交互测试模式")
         return 0  # 返回0作为占位，原BLEU功能已移除
 
+# performance.py
+def interactive_performance(args, SNR, net, user_input, token_to_idx, start_idx, end_idx, pad_idx, device):
+    StoT = SeqtoText(token_to_idx, end_idx)
+    net.eval()  # 显式设置为评估模式
+    
+    with torch.no_grad():
+        noise_std = SNR_to_noise(SNR)
+        
+        try:
+            # 文本转序列
+            seq = StoT.text_to_sequence(user_input, add_start_token=True, add_end_token=True)
+            
+            # 确保张量在正确设备上
+            seq_tensor = torch.tensor([seq], dtype=torch.long).to(device)
+            
+            # 生成预测
+            out = greedy_decode(
+                net, seq_tensor, noise_std, args.MAX_LENGTH,
+                pad_idx, start_idx, args.channel
+            )
+            
+            # 解码并清理输出
+            generated = StoT.sequence_to_text(out.cpu().numpy().tolist()[0])
+            generated = generated.split('<END>')[0].replace('<START>','').replace('<PAD>', '').strip()
+            
+            return generated
+        except Exception as e:
+            return f"处理出错: {str(e)}"
+
 if __name__ == '__main__':
     args = parser.parse_args()
-    SNR = [20]
+    SNR = 40
     start_time = time.time()
     
     # 动态检测可用设备

@@ -10,49 +10,42 @@
 <body>
     <div class="container">
         <h1>Semantic Communication Demo</h1>
+        <form method="POST" action="/" id="textForm">  <!-- 包裹整个表单区域 -->
         <div class="input-output">
             <div>
                 <label for="inputText">Text Input</label>
-                <textarea id="inputText" placeholder="Enter text here"></textarea>
+                <!-- 添加name属性并保持原有样式 -->
+                <textarea name="inputText" id="inputText" 
+                    placeholder="Enter text here" 
+                    style="height: 200px; width: 100%"></textarea>
             </div>
             <div>
                 <label for="outputText">Text Output</label>
-                <textarea id="outputText" placeholder="Output will appear here" readonly></textarea>
+                {% if output_text %}
+                <textarea id="outputText" 
+                    placeholder="Output will appear here" 
+                    readonly
+                    style="height: 200px; width: 100%">{{output_text}}</textarea>
+                {% endif %}
             </div>
         </div>
+        
         <div class="button-container">
-            <form id="textForm" method="POST" action="/predict">
-                <button type="submit">Transmit</button>
-            </form>
+            <!-- 确保按钮在form标签内部 -->
+            <button type="submit">Transmit</button>
         </div>
+        </form>  <!-- 正确闭合form标签 -->
+
         <div class="settings">
             <button onclick="openSettings()">Settings</button>
         </div>
     </div>
 
     <script>
-        document.getElementById('textForm').onsubmit = function(event) {
-            event.preventDefault();
-            var inputText = document.getElementById('inputText').value;
-            fetch('/predict', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ text: inputText })
-            })
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('outputText').value = data.prediction;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
-        };
-
         function openSettings() {
             alert("Settings section is under development.");
         }
     </script>
 </body>
 </html>
+
