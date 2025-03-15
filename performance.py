@@ -14,7 +14,7 @@ import numpy as np
 from dataset import EurDataset, collate_data
 from models.transceiver import DeepSC
 from torch.utils.data import DataLoader
-from utils import BleuScore, SNR_to_noise, greedy_decode, SeqtoText
+from utils import BleuScore, SNR_to_noise, greedy_decode, beam_search_decode, SeqtoText
 from tqdm import tqdm
 from sklearn.preprocessing import normalize
 # from bert4keras.backend import keras
@@ -24,9 +24,9 @@ from w3lib.html import remove_tags
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', default='train_data.pkl', type=str)
-parser.add_argument('--vocab-file', default='vocab.json', type=str)
-parser.add_argument('--checkpoint-path', default='checkpoints/deepsc-Rayleigh', type=str)
-parser.add_argument('--channel', default='Rayleigh', type=str)
+parser.add_argument('--vocab-file', default='processed_data/', type=str)
+parser.add_argument('--checkpoint-path', default='checkpoints/AWGN', type=str)
+parser.add_argument('--channel', default='AWGN', type=str)
 parser.add_argument('--MAX-LENGTH', default=30, type=int)
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
 parser.add_argument('--d-model', default=128, type = int)
@@ -101,7 +101,7 @@ def interactive_performance(args, SNR, net):
                 # 生成预测结果
                 out = greedy_decode(net, seq_tensor, noise_std, args.MAX_LENGTH,
                                   pad_idx, start_idx, args.channel)
-                
+               
                 # 解码生成文本
                 generated = StoT.sequence_to_text(out.cpu().numpy().tolist()[0])
                 
@@ -130,7 +130,8 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
 
     # 加载词汇表
-    args.vocab_file = 'data/' + args.vocab_file
+    vocab_filename = 'vocab.json'
+    args.vocab_file = 'data/' + args.vocab_file + vocab_filename
     vocab = json.load(open(args.vocab_file, 'rb'))
     token_to_idx = vocab['token_to_idx']
     idx_to_token = dict(zip(token_to_idx.values(), token_to_idx.keys()))

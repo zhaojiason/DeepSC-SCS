@@ -1,10 +1,3 @@
-# !usr/bin/env python
-# -*- coding:utf-8 _*-
-"""
-@Author: Huiqiang Xie
-@File: EurDataset.py
-@Time: 2021/3/31 23:20
-"""
 
 import os
 import pickle
@@ -14,7 +7,7 @@ from torch.utils.data import Dataset
 
 class EurDataset(Dataset):
     def __init__(self, split='train'):
-        data_dir = 'data/'
+        data_dir = 'data/processed_data/'
         with open(data_dir + '{}_data.pkl'.format(split), 'rb') as f:
             self.data = pickle.load(f)
 

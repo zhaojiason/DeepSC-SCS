@@ -396,5 +396,81 @@ def greedy_decode(model, src, n_var, max_len, padding_idx, start_symbol, channel
 
     return outputs
 
+def beam_search_decode(model, src, n_var, max_len, padding_idx, start_symbol, channel, 
+                      beam_size=15, length_penalty=0.2, end_symbol=2):
+    # 初始化信道参数
+    channels = Channels()
+    device = src.device
+    batch_size = src.size(0)
+    
+    # 编码器处理（保持原始实现）
+    src_mask = (src == padding_idx).unsqueeze(-2).float().to(device)
+    enc_output = model.encoder(src, src_mask)
+    channel_enc_output = model.channel_encoder(enc_output)
+    Tx_sig = PowerNormalize(channel_enc_output)
+    
+    # 信道传输（根据类型选择）
+    if channel == 'AWGN':
+        Rx_sig = channels.AWGN(Tx_sig, n_var)
+    elif channel == 'Rayleigh':
+        Rx_sig = channels.Rayleigh(Tx_sig, n_var)
+    elif channel == 'Rician':
+        Rx_sig = channels.Rician(Tx_sig, n_var)
+    else:
+        raise ValueError("Invalid channel type")
+    
+    memory = model.channel_decoder(Rx_sig)
+    
+    # 束搜索初始化（每个样本独立处理）
+    beams = [([start_symbol], 0.0)] * batch_size
+    memory = memory.repeat_interleave(beam_size, dim=0) if beam_size > 1 else memory
+
+    for step in range(max_len):
+        all_candidates = []
+        for idx, (seq, score) in enumerate(beams):
+            if seq[-1] == end_symbol or len(seq) >= max_len:
+                all_candidates.append((seq, score))
+                continue
+
+            # 准备解码输入
+            outputs = torch.tensor(seq).unsqueeze(0).to(device)
+            current_memory = memory[idx:idx+1] if beam_size ==1 else memory[idx*beam_size:(idx+1)*beam_size]
+
+            # 创建解码掩码
+            trg_mask = (outputs == padding_idx).unsqueeze(-2).float()
+            look_ahead_mask = subsequent_mask(outputs.size(1)).float().to(device)
+            combined_mask = torch.max(trg_mask, look_ahead_mask)
+
+            # 解码步骤
+            dec_output = model.decoder(outputs, current_memory, combined_mask, None)
+            logits = model.dense(dec_output[:, -1, :])
+
+            # 概率处理
+            log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
+            top_log_probs, top_indices = log_probs.topk(beam_size, dim=-1)
+
+            # 扩展候选序列
+            for i in range(beam_size):
+                next_token = top_indices[0, i].item()
+                new_log_prob = score + top_log_probs[0, i].item()
+                
+                # 长度惩罚
+                length_pen = math.pow((5.0 + len(seq) + 1) / 6.0, length_penalty)
+                new_score = new_log_prob / length_pen
+                
+                new_seq = seq + [next_token]
+                all_candidates.append((new_seq, new_score))
+
+        # 排序并选择top-k候选
+        ordered = sorted(all_candidates, key=lambda x: x[1], reverse=True)
+        beams = ordered[:beam_size]
+
+    # 选择最高分序列并截断结束符
+    best_seq = beams[0][0]
+    if end_symbol in best_seq:
+        best_seq = best_seq[:best_seq.index(end_symbol)]
+    return torch.tensor(best_seq).unsqueeze(0).to(device)
+
+
 
 

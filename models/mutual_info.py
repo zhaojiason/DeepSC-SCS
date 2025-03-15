@@ -1,10 +1,5 @@
 # !usr/bin/env python
 # -*- coding:utf-8 _*-
-"""
-@Author: Huiqiang Xie
-@File: MutuInfo.py
-@Time: 2021/4/1 9:46
-"""
 
 import torch
 import torch.nn as nn
