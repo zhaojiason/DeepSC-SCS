@@ -26,7 +26,6 @@ def initialize_model():
     
     # 设备检测
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Initializing model on {device}")
     
     # 初始化模型
     model = DeepSC(
