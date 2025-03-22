@@ -28,7 +28,7 @@
     letter-spacing: 0.5px;
   }
   
-  /* 输入输出容器 */
+  /* Input-output containers */
   .io-container {
     padding: 1.5rem;
     background: #FAFAFA;
@@ -63,7 +63,7 @@
     box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.2);
   }
   
-  /* 按钮组样式 */
+  /* Buttons  style */
   .button-group {
     display: flex;
     flex-direction: column;
@@ -111,7 +111,7 @@
     background: #546E7A;
   }
 
-/* 新增相似度专用样式 */
+/* Add similarity style */
 .similarity-container {
   background: var(--card-bg);
   border-radius: 8px;
@@ -151,19 +151,20 @@
 .label {
   color: var(--text-secondary);
 }
-/* 确保进度条容器可见 */
+
+/* about the progress bar */
 .progress {
   height: 15px;
-  overflow: visible; /* 防止裁剪 */
+  overflow: visible;
 }
 
-/* 精确控制进度条填充 */
+/* Precise control of progress bar filling */
 .progress-bar {
-  min-width: 0.5%; /* 确保小数值可见 */
+  min-width: 0.5%; 
   position: relative;
 }
 
-/* 添加数值提示 */
+/* Add value in the bar */
 .progress-bar::after {
   content: attr(aria-valuenow) "%";
   position: absolute;
