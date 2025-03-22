@@ -37,7 +37,7 @@ class Similarity:
     def __init__(self):
         """初始化时直接使用词频向量化器"""
         self.vectorizer = CountVectorizer(
-            binary=True,  # 使用二进制模式（存在性特征）
+            binary=True,  
             token_pattern=r'(?u)\b\w+\b'  # 匹配所有单词字符
         )
     
@@ -167,8 +167,9 @@ def interactive_performance(args, SNR, net, user_input, token_to_idx, start_idx,
             # 解码并清理输出
             generated = StoT.sequence_to_text(out.cpu().numpy().tolist()[0])
             generated = generated.split('<END>')[0].replace('<START>','').replace('<PAD>', '').strip()
-            
-            return generated
+            similarity = Similarity()
+            scores = similarity.compute_similarity(user_input, generated)
+            return generated, scores
         except Exception as e:
             return f"处理出错: {str(e)}"
 

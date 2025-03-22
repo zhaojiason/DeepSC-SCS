@@ -110,3 +110,65 @@
   .settings-btn:hover {
     background: #546E7A;
   }
+
+/* 新增相似度专用样式 */
+.similarity-container {
+  background: var(--card-bg);
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.similarity-content {
+  padding: 1.5rem;
+}
+
+.progress-wrapper {
+  margin-top: 1rem;
+}
+
+.progress {
+  height: 12px;
+  border-radius: 6px;
+  background-color: #e9ecef;
+}
+
+.progress-bar {
+  background-color: var(--primary-color);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.percentage {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.label {
+  color: var(--text-secondary);
+}
+/* 确保进度条容器可见 */
+.progress {
+  height: 15px;
+  overflow: visible; /* 防止裁剪 */
+}
+
+/* 精确控制进度条填充 */
+.progress-bar {
+  min-width: 0.5%; /* 确保小数值可见 */
+  position: relative;
+}
+
+/* 添加数值提示 */
+.progress-bar::after {
+  content: attr(aria-valuenow) "%";
+  position: absolute;
+  right: -25px;
+  top: -2px;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}

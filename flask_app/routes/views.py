@@ -59,7 +59,6 @@ def initialize_model():
 
 # ============== 在应用启动时初始化 ==============
 args, net, token_to_idx, idx_to_token, start_idx, end_idx, pad_idx, device = initialize_model()
-SNR = 40  # 固定SNR值
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -72,7 +71,7 @@ def index():
                 raise ValueError("Input cannot be empty")
             
             # 使用全局配置参数
-            result = interactive_performance(
+            output, similarity = interactive_performance(
                 args, 
                 config.snr,        # 使用动态SNR
                 net, 
@@ -84,11 +83,12 @@ def index():
                 device,
                 channel=config.channel_type  # 添加信道类型参数
             )
-            output = result
+            print("Channel: ", config.channel_type)
+            print("SNR value: ", config.snr)
         except Exception as e:
             output = f"Error: {str(e)}"
     
-    return render_template('index.html', output_text=output)
+    return render_template('index.html', output_text = output, similarity = round(similarity, 6))
 
 # ============== 新增配置更新路由 ==============
 @app.route('/update_config', methods=['POST'])
@@ -129,3 +129,9 @@ def update_config():
         app.logger.error(f'Config update error: {str(e)}')
         return jsonify({'status': 'error', 'message': 'Internal error'}), 500
 
+@app.route('/get_config', methods=['GET'])
+def get_current_config():
+    return jsonify({
+        'channelType': config.channel_type,
+        'snr': config.snr
+    })

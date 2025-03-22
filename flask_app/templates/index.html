@@ -37,7 +37,32 @@
                         </div>
                     </div>
                 </div>
+                <!-- 新增相似度板块 -->
+                {% if similarity is defined %}
+                <div class="similarity-container mt-4">
+                    <div class="io-box">
+                        <div class="similarity-content">
+                            <label class="io-label">Similarity Analysis</label>
+                            <div class="progress-wrapper">
+                                <div class="progress-text">
+                                    <!-- 四位小数显示 -->
+                                    <span class="percentage">{{ "%.4f"|format(similarity * 100) }}%</span>
+                                    <span class="label">Text Similarity</span>
+                                </div>
 
+                                <!-- Bootstrap进度条 -->
+                                <div class="progress mt-2">
+                                    <div id="progressBar"
+                                        class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                                        role="progressbar" aria-valuemin="0" aria-valuemax="100">
+                                        {{ "%.4f"|format(similarity * 100) }}%
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
                 <!-- 操作按钮组 -->
                 <div class="button-group">
                     <button type="submit" class="action-btn transmit-btn">
@@ -93,6 +118,37 @@
             </form>
         </div>
     </div>
+    <div class="toast-container position-fixed top-0 end-0 p-3">
+        <div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <strong class="me-auto">System Notification</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body"></div>
+        </div>
+    </div>
+
+    <script>
+        // Toast控制函数
+        function showToast(message, type = 'success') {
+            const toastEl = document.getElementById('liveToast');
+            const toastBody = toastEl.querySelector('.toast-body');
+            const toast = new bootstrap.Toast(toastEl);
+
+            // 重置样式
+            toastEl.classList.remove('bg-success', 'bg-danger');
+            toastBody.classList.remove('text-white');
+
+            // 设置新样式
+            const isError = type === 'danger';
+            toastEl.classList.add(isError ? 'bg-danger' : 'bg-success');
+            if (isError) toastBody.classList.add('text-white');
+
+            toastBody.textContent = message;
+            toast.show();
+        }
+    </script>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // 页面加载时清空所有内容
@@ -110,48 +166,86 @@
                 }
             }
         });
+        // 动态设置进度条宽度
+        document.addEventListener('DOMContentLoaded', function () {
+            const progressBar = document.getElementById('progressBar');
+            const similarity = parseFloat('{{ similarity|default(0) }}'); // 使用Jinja2默认值防止未定义
+
+            if (!isNaN(similarity)) {
+                progressBar.style.width = `${similarity * 100}%`;
+                progressBar.textContent = `${(similarity * 100).toFixed(4)}%`;
+            }
+        });
+        // 保存当前配置的全局变量
+        let currentConfig = {
+            channelType: 'AWGN',
+            snr: 20
+        };
+
+        // 初始化时获取配置
+        async function loadCurrentConfig() {
+            try {
+                const response = await fetch('/get_config');
+                const config = await response.json();
+                currentConfig = config;
+            } catch (error) {
+                console.error('Failed to load config:', error);
+            }
+        }
+
+        // 页面加载时获取配置
+        window.addEventListener('DOMContentLoaded', loadCurrentConfig);
+
+        // 打开模态框时填充当前配置
+        document.getElementById('exampleModal').addEventListener('show.bs.modal', () => {
+            document.getElementById('channelType').value = currentConfig.channelType;
+            document.getElementById('snrInput').value = currentConfig.snr;
+        });
 
         // 保存配置
         document.getElementById('saveConfig').addEventListener('click', async () => {
-            // 获取输入值
             const channelType = document.getElementById('channelType').value;
             const snrInput = document.getElementById('snrInput');
 
-            // 处理SNR空值（简单默认值逻辑）
-            let snr = parseInt(snrInput.value);
-            if (isNaN(snr)) {
-                snr = 20;  // 空值时设为默认值20
-            }
+            // 处理SNR输入
+            let snr = parseInt(snrInput.value) || currentConfig.snr;  // 使用当前配置作为默认值
 
-            // 基础范围验证
+            // 验证范围
             if (snr < 0 || snr > 20) {
-                alert("SNR must in range of 0-20");
+                snrInput.classList.add('is-invalid');
                 return;
             }
 
-            // 提交数据
             try {
-                response = await fetch('update_config', {
+                const response = await fetch('/update_config', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        channelType: channelType,
-                        snr: snr
-                    })
+                    body: JSON.stringify({ channelType, snr })
                 });
+
                 const result = await response.json();
                 if (result.status === 'success') {
-                    // 保存成功处理
-                    alert('Configuration updated successfully!');
-                    document.getElementById('exampleModal').style.display = 'none'; 
-                    // refresh the page
-                    location.reload();
+                    // 更新本地配置
+                    currentConfig = result.new_config;
+                    // 关闭模态框
+                    bootstrap.Modal.getInstance(document.getElementById('exampleModal')).hide();
+                    // 显示成功提示
+                    showToast('Configuration updated successfully');
                 } else {
-                    // 显示错误信息
-                    alert(`Error: ${result.message}`);
+                    showToast(`Error: ${result.message}`, 'danger');
                 }
             } catch (error) {
-                console.error('Fail to save the change:', error);
+                showToast('Failed to save configuration', 'danger');
+                console.error('Save error:', error);
+            }
+        });
+
+        // 实时SNR验证
+        document.getElementById('snrInput').addEventListener('input', function () {
+            this.classList.remove('is-invalid');
+            const value = parseInt(this.value);
+            if (isNaN(value) || value < 0 || value > 20) {
+                this.classList.add('is-invalid');
             }
         });
     </script>
