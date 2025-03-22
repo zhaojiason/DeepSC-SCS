@@ -144,7 +144,7 @@ def interactive(args, SNR, net):
         print("\n已退出交互测试模式")
         return 0  # 返回0作为占位，原BLEU功能已移除
 
-def interactive_performance(args, SNR, net, user_input, token_to_idx, start_idx, end_idx, pad_idx, device):
+def interactive_performance(args, SNR, net, user_input, token_to_idx, start_idx, end_idx, pad_idx, device, channel):
     StoT = SeqtoText(token_to_idx, end_idx)
     net.eval()  # 显式设置为评估模式
     
@@ -161,7 +161,7 @@ def interactive_performance(args, SNR, net, user_input, token_to_idx, start_idx,
             # 生成预测
             out = greedy_decode(
                 net, seq_tensor, noise_std, args.MAX_LENGTH,
-                pad_idx, start_idx, args.channel
+                pad_idx, start_idx, channel
             )
             
             # 解码并清理输出

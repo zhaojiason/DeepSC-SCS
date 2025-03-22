@@ -2,11 +2,18 @@
 import os
 import json
 import torch
-from flask import Flask, render_template, request, json
-from performance import DeepSC, interactive_performance, parser, SNR_to_noise, greedy_decode
+from flask import Flask, render_template, request, json, jsonify
+from performance import DeepSC, interactive_performance, parser
 
 app = Flask(__name__)
+# ============== 全局配置参数 ==============
+class ModelConfig:
+    def __init__(self):
+        self.channel_type = 'AWGN'  # 默认信道类型
+        self.snr = 20  # 默认SNR值
 
+# 初始化全局配置对象
+config = ModelConfig()
 # ============== 模型初始化函数 ==============
 def initialize_model():
     # 解析参数
@@ -35,7 +42,8 @@ def initialize_model():
     ).to(device)
     
     # 加载检查点
-    checkpoint_path = os.path.join(args.checkpoint_path, 'best_checkpoint.pth')
+    checkpoint_path = os.path.join(f'checkpoints/{config.channel_type}', 'best_checkpoint.pth')
+    print("Load model from: ", checkpoint_path)
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
     
@@ -63,10 +71,18 @@ def index():
             if not user_input:
                 raise ValueError("Input cannot be empty")
             
-            # 调用推理函数（注意传递device参数）
+            # 使用全局配置参数
             result = interactive_performance(
-                args, SNR, net, user_input,
-                token_to_idx, start_idx, end_idx, pad_idx, device  # 新增设备参数
+                args, 
+                config.snr,        # 使用动态SNR
+                net, 
+                user_input,
+                token_to_idx, 
+                start_idx, 
+                end_idx, 
+                pad_idx, 
+                device,
+                channel=config.channel_type  # 添加信道类型参数
             )
             output = result
         except Exception as e:
@@ -74,4 +90,42 @@ def index():
     
     return render_template('index.html', output_text=output)
 
+# ============== 新增配置更新路由 ==============
+@app.route('/update_config', methods=['POST'])
+def update_config():
+    try:
+        data = request.get_json()
+        # 参数验证
+        required_fields = ['channelType', 'snr']
+        if not all(field in data for field in required_fields):
+            return jsonify({'status': 'error', 'message': 'Missing parameters'}), 400
+
+        # 验证信道类型
+        valid_channels = ['AWGN', 'Rayleigh', 'Rician']
+        if data['channelType'] not in valid_channels:
+            return jsonify({'status': 'error', 'message': 'Invalid channel type'}), 400
+
+        # 验证SNR
+        try:
+            snr = int(data['snr'])
+        except ValueError:
+            return jsonify({'status': 'error', 'message': 'SNR must be integer'}), 400
+            
+        if not (0 <= snr <= 20):
+            return jsonify({'status': 'error', 'message': 'SNR out of range'}), 400
+
+        config.channel_type = data['channelType']
+        config.snr = snr
+
+        return jsonify({
+            'status': 'success',
+            'new_config': {
+                'channelType': config.channel_type,
+                'snr': config.snr
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f'Config update error: {str(e)}')
+        return jsonify({'status': 'error', 'message': 'Internal error'}), 500
 

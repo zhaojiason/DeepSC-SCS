@@ -75,7 +75,7 @@
                                         <div class="mb-3">
                                             <label for="snrInput" class="form-label">SNR (0-20)</label>
                                             <input type="number" class="form-control" id="snrInput" min="0" max="20"
-                                                step="1" placeholder="Enter SNR value" required>
+                                                step="1" placeholder="Enter SNR value">
                                             <div class="form-text">Must be an integer between 0 and 20</div>
                                         </div>
                                     </form>
@@ -93,7 +93,7 @@
             </form>
         </div>
     </div>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // 页面加载时清空所有内容
         window.addEventListener('load', function () {
@@ -111,11 +111,51 @@
             }
         });
 
-        function openSettings() {
-            alert("Settings section is under development.");
-        }
+        // 保存配置
+        document.getElementById('saveConfig').addEventListener('click', async () => {
+            // 获取输入值
+            const channelType = document.getElementById('channelType').value;
+            const snrInput = document.getElementById('snrInput');
+
+            // 处理SNR空值（简单默认值逻辑）
+            let snr = parseInt(snrInput.value);
+            if (isNaN(snr)) {
+                snr = 20;  // 空值时设为默认值20
+            }
+
+            // 基础范围验证
+            if (snr < 0 || snr > 20) {
+                alert("SNR must in range of 0-20");
+                return;
+            }
+
+            // 提交数据
+            try {
+                response = await fetch('update_config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        channelType: channelType,
+                        snr: snr
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    // 保存成功处理
+                    alert('Configuration updated successfully!');
+                    document.getElementById('exampleModal').style.display = 'none'; 
+                    // refresh the page
+                    location.reload();
+                } else {
+                    // 显示错误信息
+                    alert(`Error: ${result.message}`);
+                }
+            } catch (error) {
+                console.error('Fail to save the change:', error);
+            }
+        });
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
 </body>
 
 </html>
