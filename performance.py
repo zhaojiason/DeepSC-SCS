@@ -10,12 +10,9 @@ import numpy as np
 from dataset import EurDataset, collate_data
 from models.transceiver import DeepSC
 from torch.utils.data import DataLoader
-from utils import BleuScore, SNR_to_noise, greedy_decode, beam_search_decode, SeqtoText
-from tqdm import tqdm
-from sklearn.preprocessing import normalize
-# from bert4keras.backend import keras
-# from bert4keras.models import build_bert_model
-# from bert4keras.tokenizers import Tokenizer
+from utils import BleuScore, SNR_to_noise, greedy_decode, SeqtoText
+from sklearn.feature_extraction.text import CountVectorizer 
+from sklearn.metrics.pairwise import cosine_similarity
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', default='train_data.pkl', type=str)
@@ -35,6 +32,35 @@ parser.add_argument('--bert-checkpoint-path', default='bert/cased_L-12_H-768_A-1
 parser.add_argument('--bert-dict-path', default='bert/cased_L-12_H-768_A-12/vocab.txt', type = str)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+class Similarity:
+    def __init__(self):
+        """初始化时直接使用词频向量化器"""
+        self.vectorizer = CountVectorizer(
+            binary=True,  # 使用二进制模式（存在性特征）
+            token_pattern=r'(?u)\b\w+\b'  # 匹配所有单词字符
+        )
+    
+    def compute_similarity(self, src_text, tgt_text):
+        """直接处理单个文本对的相似度计算"""
+        # 确保输入是列表格式（即使只有一个样本）
+        if isinstance(src_text, str):
+            src_text = [src_text]
+        if isinstance(tgt_text, str):
+            tgt_text = [tgt_text]
+        
+        # 合并文本并向量化
+        all_texts = src_text + tgt_text
+        matrix = self.vectorizer.fit_transform(all_texts).astype(float)
+        
+        # 分割向量
+        src_vector = matrix[0].reshape(1, -1)
+        tgt_vector = matrix[1].reshape(1, -1)
+        
+        # 计算余弦相似度
+        return cosine_similarity(src_vector, tgt_vector)[0][0]
+
+
 
 def performance(args, SNR, net):
     # 仅初始化一次数据加载器
@@ -67,10 +93,13 @@ def performance(args, SNR, net):
         print(f"Generated: {generated[1]}\n")
         
         # 计算全局BLEU分数（可选）
-        bleu_score_1gram = BleuScore(1, 0, 0, 0)
-        return bleu_score_1gram.compute_blue_score(generated, target)
+        bleu_score_1gram = BleuScore(0.25, 0.25, 0.25, 0.25)
+        cosine_similarity = Similarity()
+        scores = cosine_similarity.compute_similarity(target[1], generated[1])
+        print(f"[The simiarlity score is] {scores:.4f}")
+        return bleu_score_1gram.compute_bleu_score(generated, target)
 
-def interactive_performance(args, SNR, net):
+def interactive(args, SNR, net):
     StoT = SeqtoText(token_to_idx, end_idx)
     net.eval()
     
@@ -86,7 +115,7 @@ def interactive_performance(args, SNR, net):
             
             try:
                 # 将文本转换为模型输入格式
-                seq = StoT.text_to_sequence(user_input, add_start_token=True, add_end_token=True)
+                seq = StoT.text_to_sequence(user_input.lower(), add_start_token=True, add_end_token=True)
                 
                 # 转换为张量并添加batch维度
                 seq_tensor = torch.tensor([seq], dtype=torch.long).to(device)
@@ -105,7 +134,9 @@ def interactive_performance(args, SNR, net):
                 print("\n=== 文本生成结果 ===")
                 print(f"[原始输入] {user_input}")
                 print(f"[生成结果] {generated}")
-                
+                similarity = Similarity()
+                scores = similarity.compute_similarity(user_input, generated)
+                print(f"[The simiarlity score is] {scores:.4f}")
             except Exception as e:
                 print(f"处理出错: {str(e)}")
                 continue
@@ -113,7 +144,6 @@ def interactive_performance(args, SNR, net):
         print("\n已退出交互测试模式")
         return 0  # 返回0作为占位，原BLEU功能已移除
 
-# performance.py
 def interactive_performance(args, SNR, net, user_input, token_to_idx, start_idx, end_idx, pad_idx, device):
     StoT = SeqtoText(token_to_idx, end_idx)
     net.eval()  # 显式设置为评估模式
@@ -123,7 +153,7 @@ def interactive_performance(args, SNR, net, user_input, token_to_idx, start_idx,
         
         try:
             # 文本转序列
-            seq = StoT.text_to_sequence(user_input, add_start_token=True, add_end_token=True)
+            seq = StoT.text_to_sequence(user_input.lower(), add_start_token=True, add_end_token=True)
             
             # 确保张量在正确设备上
             seq_tensor = torch.tensor([seq], dtype=torch.long).to(device)
@@ -217,7 +247,8 @@ if __name__ == '__main__':
                 bleu_score = performance(args, SNR, deepsc)
         else:
             # 进行用户交互测试
-            interactive_performance(args, SNR, deepsc)
+            interactive(args, SNR, deepsc)
             bleu_score = performance(args, SNR, deepsc)
+            
     
     print(f"BLEU Score: {bleu_score}")

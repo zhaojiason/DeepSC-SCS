@@ -31,7 +31,8 @@
                         <div class="io-box">
                             <label class="io-label">Text Output</label>
                             {% if output_text %}
-                            <textarea name="outputText" class="io-textarea form-control" readonly>{{output_text}}</textarea>
+                            <textarea name="outputText" class="io-textarea form-control"
+                                readonly>{{output_text}}</textarea>
                             {% endif %}
                         </div>
                     </div>
@@ -42,33 +43,78 @@
                     <button type="submit" class="action-btn transmit-btn">
                         Transmit
                     </button>
-                    <button type="button" class="action-btn settings-btn" onclick="openSettings()">
+                    <!-- Button trigger modal -->
+                    <button type="button" class="action-btn settings-btn btn-primary" data-bs-toggle="modal"
+                        data-bs-target="#exampleModal">
                         Settings
                     </button>
+
+                    <!-- Modal -->
+                    <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel"
+                        aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h1 class="modal-title fs-5" id="exampleModalLabel">Modify the model config</h1>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                        aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <form id="configForm">
+                                        <!-- 信道类型选择 -->
+                                        <div class="mb-3">
+                                            <label for="channelType" class="form-label">Channel Type</label>
+                                            <select class="form-select" id="channelType" required>
+                                                <option value="AWGN">AWGN</option>
+                                                <option value="Rayleigh">Rayleigh</option>
+                                                <option value="Rician">Rician</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- 信噪比输入 -->
+                                        <div class="mb-3">
+                                            <label for="snrInput" class="form-label">SNR (0-20)</label>
+                                            <input type="number" class="form-control" id="snrInput" min="0" max="20"
+                                                step="1" placeholder="Enter SNR value" required>
+                                            <div class="form-text">Must be an integer between 0 and 20</div>
+                                        </div>
+                                    </form>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary"
+                                        data-bs-dismiss="modal">Close</button>
+                                    <button type="button" class="btn btn-primary" id="saveConfig">Save changes</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Modal content end -->
                 </div>
             </form>
         </div>
     </div>
 
-<script>
-    // 页面加载时清空所有内容
-    window.addEventListener('load', function () {
-        // 检测是否是刷新操作
-        if (performance.navigation.type === 1) {
-            // 清空输入框
-            let inputText = document.querySelector('textarea[name="inputText"]');
-            if (inputText) inputText.value = '';
+    <script>
+        // 页面加载时清空所有内容
+        window.addEventListener('load', function () {
+            // 检测是否是刷新操作
+            if (window.performance && window.performance.navigation) {
+                if (window.performance.navigation.type === window.performance.navigation.TYPE_RELOAD) {
+                    // 清空输入框
+                    let inputText = document.querySelector('textarea[name="inputText"]');
+                    if (inputText) inputText.value = '';
 
-            // 清空输出框（如果存在）
-            let outputText = document.querySelector('textarea[name="outputText"]');
-            if (outputText) outputText.value = '';
+                    // 清空输出框（如果存在）
+                    let outputText = document.querySelector('textarea[name="outputText"]');
+                    if (outputText) outputText.value = '';
+                }
+            }
+        });
+
+        function openSettings() {
+            alert("Settings section is under development.");
         }
-    });
-
-    function openSettings() {
-        alert("Settings section is under development.");
-    }
-</script>
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 
