@@ -169,7 +169,7 @@
         // 动态设置进度条宽度
         document.addEventListener('DOMContentLoaded', function () {
             const progressBar = document.getElementById('progressBar');
-            const similarity = parseFloat('{{ similarity|default(0) }}'); // 使用Jinja2默认值防止未定义
+            const similarity = parseFloat('{{ similarity|default(0) }}'); 
 
             if (!isNaN(similarity)) {
                 progressBar.style.width = `${similarity * 100}%`;

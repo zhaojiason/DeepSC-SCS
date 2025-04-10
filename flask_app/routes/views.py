@@ -63,6 +63,7 @@ args, net, token_to_idx, idx_to_token, start_idx, end_idx, pad_idx, device = ini
 @app.route('/', methods=['GET', 'POST'])
 def index():
     output = ""
+    similarity = 0.0  # 初始化默认值
     if request.method == 'POST':
         user_input = request.form.get('inputText', '').strip()
         
@@ -87,8 +88,10 @@ def index():
             print("SNR value: ", config.snr)
         except Exception as e:
             output = f"Error: {str(e)}"
+            # 可以选择重置相似度或保持默认值
+            similarity = 0.0
     
-    return render_template('index.html', output_text = output, similarity = round(similarity, 6))
+    return render_template('index.html', output_text=output, similarity=round(similarity, 6))
 
 # ============== 新增配置更新路由 ==============
 @app.route('/update_config', methods=['POST'])

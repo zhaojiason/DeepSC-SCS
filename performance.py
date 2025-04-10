@@ -17,7 +17,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', default='train_data.pkl', type=str)
 parser.add_argument('--vocab-file', default='processed_data/', type=str)
-parser.add_argument('--checkpoint-path', default='checkpoints/AWGN', type=str)
+parser.add_argument('--checkpoint-path', default='checkpoints/', type=str)
 parser.add_argument('--channel', default='AWGN', type=str)
 parser.add_argument('--MAX-LENGTH', default=30, type=int)
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
@@ -27,9 +27,6 @@ parser.add_argument('--num-layers', default=4, type=int)
 parser.add_argument('--num-heads', default=8, type=int)
 parser.add_argument('--batch-size', default=64, type=int)
 parser.add_argument('--epochs', default=2, type = int)
-parser.add_argument('--bert-config-path', default='bert/cased_L-12_H-768_A-12/bert_config.json', type = str)
-parser.add_argument('--bert-checkpoint-path', default='bert/cased_L-12_H-768_A-12/bert_model.ckpt', type = str)
-parser.add_argument('--bert-dict-path', default='bert/cased_L-12_H-768_A-12/vocab.txt', type = str)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

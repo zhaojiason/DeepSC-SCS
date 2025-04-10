@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue May 26 16:59:14 2020
 
-@author: HQ Xie
-"""
 import os
 import argparse
 import time
@@ -22,7 +18,7 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser()
 #parser.add_argument('--data-dir', default='data/train_data.pkl', type=str)
 parser.add_argument('--vocab-file', default='vocab.json', type=str)
-parser.add_argument('--checkpoint-path', default='checkpoints/AWGN', type=str)
+parser.add_argument('--checkpoint-path', default='checkpoints/Rician', type=str)
 parser.add_argument('--channel', default='AWGN', type=str, help = 'Please choose AWGN, Rayleigh, and Rician')
 parser.add_argument('--MAX-LENGTH', default=30, type=int)
 parser.add_argument('--MIN-LENGTH', default=4, type=int)

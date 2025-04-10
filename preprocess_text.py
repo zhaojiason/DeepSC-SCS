@@ -143,8 +143,7 @@ def main(args):
         if not fn.endswith('.txt'): continue
         process_sentences = process(os.path.join(args.input_data_dir, fn), encoding=args.input_encoding)
         sentences += process_sentences
-    # print("Original sentences:", sentences)
-    # remove the same sentences
+
     a = {}
     for set in sentences:
         if set not in a:
