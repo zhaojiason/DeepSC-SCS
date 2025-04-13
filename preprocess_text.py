@@ -9,6 +9,7 @@ import argparse
 import os
 import json
 from tqdm import tqdm
+from transformers import BertTokenizer
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input-data-dir', default='', type=str)
@@ -66,69 +67,6 @@ def process(text_path, encoding='utf-8'):
     raw_data_input = cutted_data(raw_data_input)
     return raw_data_input
 
-def tokenize(s, delim=' ', add_start_token=True, add_end_token=True,
-             punct_to_keep=None, punct_to_remove=None):
-    """
-    Tokenize a sequence, converting a string s into a list of (string) tokens by
-    splitting on the specified delimiter. Optionally keep or remove certain
-    punctuation marks and add start and end tokens.
-    """
-    if punct_to_keep is not None:
-        for p in punct_to_keep:
-            s = s.replace(p, '%s%s' % (delim, p))
-
-    if punct_to_remove is not None:
-        for p in punct_to_remove:
-            s = s.replace(p, '')
-
-    tokens = s.split(delim)
-    if add_start_token:
-        tokens.insert(0, '<START>')
-    if add_end_token:
-        tokens.append('<END>')
-    return tokens
-
-def build_vocab(sequences, token_to_idx={}, min_token_count=1, delim=' ',
-                punct_to_keep=None, punct_to_remove=None):
-    token_to_count = {}
-
-    for seq in sequences:
-        seq_tokens = tokenize(seq, delim=delim, punct_to_keep=punct_to_keep,
-                              punct_to_remove=punct_to_remove,
-                              add_start_token=False, add_end_token=False)
-        for token in seq_tokens:
-            if token not in token_to_count:
-                token_to_count[token] = 0
-            token_to_count[token] += 1
-
-    for token, count in sorted(token_to_count.items()):
-        if count >= min_token_count:
-            token_to_idx[token] = len(token_to_idx)
-
-    return token_to_idx
-
-def encode(seq_tokens, token_to_idx, allow_unk=False):
-    seq_idx = []
-    for token in seq_tokens:
-        if token not in token_to_idx:
-            if allow_unk:
-                token = '<UNK>'
-            else:
-                raise KeyError('Token "%s" not in vocab' % token)
-        seq_idx.append(token_to_idx[token])
-    return seq_idx
-
-def decode(seq_idx, idx_to_token, delim=None, stop_at_end=True):
-    tokens = []
-    for idx in seq_idx:
-        tokens.append(idx_to_token[idx])
-        if stop_at_end and tokens[-1] == '<END>':
-            break
-    if delim is None:
-        return tokens
-    else:
-        return delim.join(tokens)
-
 def main(args):
     data_dir = 'data/'
     args.input_data_dir = os.path.join(data_dir, args.input_data_dir)
@@ -152,26 +90,37 @@ def main(args):
     sentences = list(a.keys())
     print('Number of sentences: {}'.format(len(sentences)))
 
+    # 使用BERT的分词器
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+    print('Tokenize sentences')
+    tokenized_sentences = []
+    for sentence in tqdm(sentences):
+        tokens = tokenizer.tokenize(sentence)
+        # 添加特殊标记
+        tokens = ['[CLS]'] + tokens + ['[SEP]']
+        tokenized_sentences.append(tokens)
+
+    # 构建词汇表
     print('Build Vocab')
-    token_to_idx = build_vocab(
-        sentences, SPECIAL_TOKENS,
-        punct_to_keep=[';', ','], punct_to_remove=['?', '.']
-    )
+    vocab = tokenizer.vocab
+    # 添加特殊标记
+    for token, idx in SPECIAL_TOKENS.items():
+        vocab[token] = idx
 
-    vocab = {'token_to_idx': token_to_idx}
-    print('Number of words in Vocab: {}'.format(len(token_to_idx)))
+    print('Number of words in Vocab: {}'.format(len(vocab)))
 
-    # save the vocab
+    # 保存词汇表
     if args.output_vocab != '':
         with open(args.output_vocab, 'w', encoding=args.output_encoding) as f:
             json.dump(vocab, f)
 
     print('Start encoding txt')
     results = []
-    for seq in tqdm(sentences):
-        words = tokenize(seq, punct_to_keep=[';', ','], punct_to_remove=['?', '.'])
-        tokens = [token_to_idx[word] for word in words]
-        results.append(tokens)
+    for tokens in tqdm(tokenized_sentences):
+        # 将分词结果转换为ID
+        token_ids = tokenizer.convert_tokens_to_ids(tokens)
+        results.append(token_ids)
 
     print('Writing Data')
     train_data = results[: round(len(results) * 0.9)]
