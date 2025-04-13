@@ -8,14 +8,13 @@ utils.py
 import os
 import math
 import torch
-import time
+from torch.distributions import Gamma
 import torch.nn as nn
 import numpy as np
 from w3lib.html import remove_tags
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from models.mutual_info import sample_batch, mutual_information
-from preprocess_text import tokenize, encode
-
+from transformers import BertTokenizer
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -33,9 +32,10 @@ class BleuScore():
             sent1 = remove_tags(sent1).split()
             sent2 = remove_tags(sent2).split()
             score.append(sentence_bleu([sent1], sent2,
-                                       weights=(self.w1, self.w2, self.w3, self.w4), 
+                                       weights=(self.w1, self.w2,
+                                                self.w3, self.w4),
                                        smoothing_function=smoothing_function.method1))
-        # return the average sentence bleu score  
+        # return the average sentence bleu score
         avg_score = sum(score)/len(score)
         return round(avg_score, 5)
 
@@ -149,44 +149,74 @@ class SeqtoText:
         words = ' '.join(words)
         return (words)
 
-    def text_to_sequence(self, text, add_start_token=True, add_end_token=True):
-        # Tokenize the input text
-        tokens = tokenize(text, punct_to_keep=[';', ','], punct_to_remove=['?', '.'],
-                          add_start_token=add_start_token, add_end_token=add_end_token)
-        sequence = encode(tokens, self.vocb_dictionary, allow_unk=True)
-        return sequence
+    def text_to_sequence(self, text):
+        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        # 分词
+        tokens = tokenizer.tokenize(text)
+        # 添加特殊标记
+        tokens = ['[CLS]'] + tokens + ['[SEP]']
+        # 转换为ID序列
+        token_ids = []
+        for token in tokens:
+            if token in self.vocb_dictionary:
+                token_ids.append(self.vocb_dictionary[token])
+            else:
+                token_ids.append(self.vocb_dictionary['[UNK]'])
+        return token_ids
 
 
 class Channels():
+    def __init__(self, device):
+        self.device = device
 
     def AWGN(self, Tx_sig, n_var):
-        Rx_sig = Tx_sig + torch.normal(0, n_var, size=Tx_sig.shape).to(device)
+        Rx_sig = Tx_sig + \
+            torch.normal(0, n_var, size=Tx_sig.shape).to(self.device)
         return Rx_sig
 
     def Rayleigh(self, Tx_sig, n_var):
         shape = Tx_sig.shape
-        H_real = torch.normal(0, math.sqrt(1/2), size=[1]).to(device)
-        H_imag = torch.normal(0, math.sqrt(1/2), size=[1]).to(device)
-        H = torch.Tensor([[H_real, -H_imag], [H_imag, H_real]]).to(device)
-        Tx_sig = torch.matmul(Tx_sig.view(shape[0], -1, 2), H)
+        H_real = torch.normal(0, math.sqrt(
+            1/2), size=Tx_sig.shape).to(self.device)
+        H_imag = torch.normal(0, math.sqrt(
+            1/2), size=Tx_sig.shape).to(self.device)
+        H = torch.sqrt(H_real**2 + H_imag**2)
+        Tx_sig = Tx_sig * H
         Rx_sig = self.AWGN(Tx_sig, n_var)
-        # Channel estimation
-        Rx_sig = torch.matmul(Rx_sig, torch.inverse(H)).view(shape)
-
         return Rx_sig
 
     def Rician(self, Tx_sig, n_var, K=1):
         shape = Tx_sig.shape
         mean = math.sqrt(K / (K + 1))
         std = math.sqrt(1 / (K + 1))
-        H_real = torch.normal(mean, std, size=[1]).to(device)
-        H_imag = torch.normal(mean, std, size=[1]).to(device)
-        H = torch.Tensor([[H_real, -H_imag], [H_imag, H_real]]).to(device)
-        Tx_sig = torch.matmul(Tx_sig.view(shape[0], -1, 2), H)
+        H_real = torch.normal(mean, std, size=Tx_sig.shape).to(self.device)
+        H_imag = torch.normal(mean, std, size=Tx_sig.shape).to(self.device)
+        H = torch.sqrt(H_real**2 + H_imag**2)
+        Tx_sig = Tx_sig * H
         Rx_sig = self.AWGN(Tx_sig, n_var)
-        # Channel estimation
-        Rx_sig = torch.matmul(Rx_sig, torch.inverse(H)).view(shape)
+        return Rx_sig
 
+    def Suzuki(self, Tx_sig, n_var, sigma_shadow=4):
+        # Suzuki信道结合了瑞利衰落和对数正态阴影衰落
+        # 生成瑞利衰落信道系数
+        H_rayleigh = torch.sqrt(torch.normal(0, math.sqrt(1/2), size=Tx_sig.shape).to(self.device)**2 +
+                                torch.normal(0, math.sqrt(1/2), size=Tx_sig.shape).to(self.device)**2)
+        # 生成对数正态阴影衰落
+        shadow = torch.exp(torch.normal(
+            0, sigma_shadow, size=Tx_sig.shape).to(self.device) / 10)
+        # 应用Suzuki衰落
+        Tx_sig = Tx_sig * H_rayleigh * shadow
+        Rx_sig = self.AWGN(Tx_sig, n_var)
+        return Rx_sig
+
+    def Nakagami(self, Tx_sig, n_var, m=2):
+        # 生成Nakagami-m信道系数
+        gamma_dist = Gamma(concentration=m, rate=1.0)
+        gamma_samples = gamma_dist.sample(Tx_sig.shape).to(self.device)
+        H = torch.sqrt(gamma_samples / m)
+        # 应用Nakagami-m衰落
+        Tx_sig = Tx_sig * H
+        Rx_sig = self.AWGN(Tx_sig, n_var)
         return Rx_sig
 
 
