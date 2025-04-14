@@ -16,8 +16,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', default='train_data.pkl', type=str)
-parser.add_argument('--vocab-file', default='processed_data/', type=str)
-parser.add_argument('--checkpoint-path', default='checkpoints/', type=str)
+parser.add_argument('--vocab-file', default='data/processed_data/vocab.json', type=str)
+parser.add_argument('--checkpoint-path', default='checkpoints/AWGN/', type=str)
 parser.add_argument('--channel', default='AWGN', type=str)
 parser.add_argument('--MAX-LENGTH', default=30, type=int)
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
@@ -97,7 +97,7 @@ def performance(args, SNR, net):
         return bleu_score_1gram.compute_bleu_score(generated, target)
 
 def interactive(args, SNR, net):
-    StoT = SeqtoText(token_to_idx, end_idx)
+    StoT = SeqtoText(token_to_idx, end_idx=vocab['[SEP]'])
     net.eval()
     
     with torch.no_grad():
@@ -112,7 +112,7 @@ def interactive(args, SNR, net):
             
             try:
                 # 将文本转换为模型输入格式
-                seq = StoT.text_to_sequence(user_input.lower(), add_start_token=True, add_end_token=True)
+                seq = StoT.text_to_sequence(user_input.lower())
                 
                 # 转换为张量并添加batch维度
                 seq_tensor = torch.tensor([seq], dtype=torch.long).to(device)
@@ -125,7 +125,7 @@ def interactive(args, SNR, net):
                 generated = StoT.sequence_to_text(out.cpu().numpy().tolist()[0])
                 
                 # 清理填充符号和结束符
-                generated = generated.split('<END>')[0].replace('<START>','').replace('<PAD>', '').strip()
+                generated = generated.split('[SEP]')[0].replace('[CLS]','').replace('<PAD>', '').strip()
                 
                 # 显示结果
                 print("\n=== 文本生成结果 ===")
@@ -179,16 +179,22 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    print(f"Loaded vocabulary from {args.vocab_file}")
+    """ 准备数据集 """
     # 加载词汇表
-    vocab_filename = 'vocab.json'
-    args.vocab_file = 'data/' + args.vocab_file + vocab_filename
-    vocab = json.load(open(args.vocab_file, 'rb'))
-    token_to_idx = vocab['token_to_idx']
-    idx_to_token = dict(zip(token_to_idx.values(), token_to_idx.keys()))
+    with open(args.vocab_file, 'r', encoding='utf-8') as f:
+        vocab = json.load(f)
+    
+    # 构建 token_to_idx 和 idx_to_token 的映射
+    token_to_idx = vocab
+    idx_to_token = {v: k for k, v in token_to_idx.items()}
+
+    # 提取特殊标记的索引
+    pad_idx = token_to_idx.get('[PAD]', None)
+    start_idx = token_to_idx.get('[CLS]', None)
+    end_idx = token_to_idx.get('[SEP]', None)
+    unk_idx = token_to_idx.get('[UNK]', None)
     num_vocab = len(token_to_idx)
-    pad_idx = token_to_idx["<PAD>"]
-    start_idx = token_to_idx["<START>"]
-    end_idx = token_to_idx["<END>"]
     # ============== 修复1：设备感知的优化逻辑 ==============
     if torch.cuda.is_available():
         # GPU专用优化

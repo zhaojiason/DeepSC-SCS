@@ -18,8 +18,8 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser()
 #parser.add_argument('--data-dir', default='data/train_data.pkl', type=str)
 parser.add_argument('--vocab-file', default='vocab.json', type=str)
-parser.add_argument('--checkpoint-path', default='checkpoints/Rician', type=str)
-parser.add_argument('--channel', default='AWGN', type=str, help = 'Please choose AWGN, Rayleigh, and Rician')
+parser.add_argument('--checkpoint-path', default='checkpoints/AWGN', type=str)
+parser.add_argument('--channel', default='AWGN', type=str, help = 'Please choose AWGN, Rayleigh, Rician, Suzuki and Nakagami')
 parser.add_argument('--MAX-LENGTH', default=30, type=int)
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
 parser.add_argument('--d-model', default=128, type=int)
@@ -98,13 +98,20 @@ if __name__ == '__main__':
         os.makedirs(args.checkpoint_path)
     
     """ 准备数据集 """
-    vocab = json.load(open(args.vocab_file, 'rb'))
-    token_to_idx = vocab['token_to_idx']
+    # 加载词汇表
+    with open(args.vocab_file, 'r', encoding='utf-8') as f:
+        vocab = json.load(f)
+
+    # 构建 token_to_idx 和 idx_to_token 的映射
+    token_to_idx = vocab
     idx_to_token = {v: k for k, v in token_to_idx.items()}
+
+    # 提取特殊标记的索引
+    pad_idx = token_to_idx.get('[PAD]', None)
+    start_idx = token_to_idx.get('[CLS]', None)
+    end_idx = token_to_idx.get('[SEP]', None)
+    unk_idx = token_to_idx.get('[UNK]', None)
     num_vocab = len(token_to_idx)
-    pad_idx = token_to_idx["<PAD>"]
-    start_idx = token_to_idx["<START>"]
-    end_idx = token_to_idx["<END>"]
 
     """ 定义模型和优化器 """
     deepsc = DeepSC(args.num_layers, num_vocab, num_vocab,

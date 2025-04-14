@@ -343,8 +343,12 @@ def train_mi(model, mi_net, src, n_var, padding_idx, opt, channel):
         Rx_sig = channels.Rayleigh(Tx_sig, n_var)
     elif channel == 'Rician':
         Rx_sig = channels.Rician(Tx_sig, n_var)
+    elif channel == 'Suzuki':
+        Rx_sig = channels.Suzuki(Tx_sig, n_var)
+    elif channel == 'Nakagami':
+        Rx_sig = channels.Nakagami(Tx_sig, n_var)
     else:
-        raise ValueError("Please choose from AWGN, Rayleigh, and Rician")
+        raise ValueError("Please choose from AWGN, Rayleigh, Suzuki, Rician and Nakagami")
 
     joint, marginal = sample_batch(Tx_sig, Rx_sig)
     mi_lb, _, _ = mutual_information(joint, marginal, mi_net)
