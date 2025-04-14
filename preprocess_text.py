@@ -68,7 +68,7 @@ def process(text_path, encoding='utf-8'):
     return raw_data_input
 
 def main(args):
-    data_dir = 'data/processed_data'
+    data_dir = 'data/'
     args.input_data_dir = os.path.join(data_dir, args.input_data_dir)
     args.output_train_dir = os.path.join(data_dir, args.output_train_dir)
     args.output_test_dir = os.path.join(data_dir, args.output_test_dir)

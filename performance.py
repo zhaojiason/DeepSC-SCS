@@ -16,8 +16,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', default='train_data.pkl', type=str)
-parser.add_argument('--vocab-file', default='data/processed_data/vocab.json', type=str)
-parser.add_argument('--checkpoint-path', default='checkpoints/AWGN/', type=str)
+parser.add_argument('--vocab-file', default='data/processed_data_2/vocab.json', type=str)
+parser.add_argument('--checkpoint-path', default='checkpoints/AWGN_data2/', type=str)
 parser.add_argument('--channel', default='AWGN', type=str)
 parser.add_argument('--MAX-LENGTH', default=30, type=int)
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
@@ -80,21 +80,27 @@ def performance(args, SNR, net):
         out = greedy_decode(net, sents, noise_std, args.MAX_LENGTH,
                            pad_idx, start_idx, args.channel)
         
-        # 解码文本
-        generated = [StoT.sequence_to_text(seq) for seq in out.cpu().numpy().tolist()]
-        target = [StoT.sequence_to_text(seq) for seq in sents.cpu().numpy().tolist()]
+        # 解码文本并去掉[CLS]标签
+        generated = [StoT.sequence_to_text(seq).split()[1:] for seq in out.cpu().numpy().tolist()]
+        target = [StoT.sequence_to_text(seq).split()[1:] for seq in sents.cpu().numpy().tolist()]
+        
+        # 将列表转换为字符串
+        generated_str = [' '.join(seq) for seq in generated]
+        target_str = [' '.join(seq) for seq in target]
         
         # 仅取第一条样本展示
         print("\n=== 文本对比示例 ===")
-        print(f"Target:    {target[1]}")
-        print(f"Generated: {generated[1]}\n")
+        print(f"Target:    {target_str[-2]}")
+        print(f"Generated: {generated_str[-2]}\n")
         
         # 计算全局BLEU分数（可选）
         bleu_score_1gram = BleuScore(0.25, 0.25, 0.25, 0.25)
         cosine_similarity = Similarity()
-        scores = cosine_similarity.compute_similarity(target[1], generated[1])
+        scores = cosine_similarity.compute_similarity(target_str[-2], generated_str[-2])
         print(f"[The simiarlity score is] {scores:.4f}")
-        return bleu_score_1gram.compute_bleu_score(generated, target)
+        generated_text = [StoT.sequence_to_text(seq) for seq in out.cpu().numpy().tolist()]
+        reference_text = [StoT.sequence_to_text(seq) for seq in sents.cpu().numpy().tolist()]
+        return bleu_score_1gram.compute_bleu_score(generated_text, reference_text)
 
 def interactive(args, SNR, net):
     StoT = SeqtoText(token_to_idx, end_idx=vocab['[SEP]'])
@@ -125,7 +131,7 @@ def interactive(args, SNR, net):
                 generated = StoT.sequence_to_text(out.cpu().numpy().tolist()[0])
                 
                 # 清理填充符号和结束符
-                generated = generated.split('[SEP]')[0].replace('[CLS]','').replace('<PAD>', '').strip()
+                generated = generated.split('[SEP]')[0].replace('[CLS]','').replace('[PAD]', '').strip()
                 
                 # 显示结果
                 print("\n=== 文本生成结果 ===")
