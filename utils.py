@@ -166,20 +166,17 @@ class SeqtoText:
 
 
 class Channels():
-    def __init__(self, device):
-        self.device = device
 
     def AWGN(self, Tx_sig, n_var):
-        Rx_sig = Tx_sig + \
-            torch.normal(0, n_var, size=Tx_sig.shape).to(self.device)
+        Rx_sig = Tx_sig + torch.normal(0, n_var, size=Tx_sig.shape).to(device)
         return Rx_sig
 
     def Rayleigh(self, Tx_sig, n_var):
         shape = Tx_sig.shape
         H_real = torch.normal(0, math.sqrt(
-            1/2), size=Tx_sig.shape).to(self.device)
+            1/2), size=Tx_sig.shape).to(device)
         H_imag = torch.normal(0, math.sqrt(
-            1/2), size=Tx_sig.shape).to(self.device)
+            1/2), size=Tx_sig.shape).to(device)
         H = torch.sqrt(H_real**2 + H_imag**2)
         Tx_sig = Tx_sig * H
         Rx_sig = self.AWGN(Tx_sig, n_var)
@@ -189,8 +186,8 @@ class Channels():
         shape = Tx_sig.shape
         mean = math.sqrt(K / (K + 1))
         std = math.sqrt(1 / (K + 1))
-        H_real = torch.normal(mean, std, size=Tx_sig.shape).to(self.device)
-        H_imag = torch.normal(mean, std, size=Tx_sig.shape).to(self.device)
+        H_real = torch.normal(mean, std, size=Tx_sig.shape).to(device)
+        H_imag = torch.normal(mean, std, size=Tx_sig.shape).to(device)
         H = torch.sqrt(H_real**2 + H_imag**2)
         Tx_sig = Tx_sig * H
         Rx_sig = self.AWGN(Tx_sig, n_var)
@@ -199,11 +196,11 @@ class Channels():
     def Suzuki(self, Tx_sig, n_var, sigma_shadow=4):
         # Suzuki信道结合了瑞利衰落和对数正态阴影衰落
         # 生成瑞利衰落信道系数
-        H_rayleigh = torch.sqrt(torch.normal(0, math.sqrt(1/2), size=Tx_sig.shape).to(self.device)**2 +
-                                torch.normal(0, math.sqrt(1/2), size=Tx_sig.shape).to(self.device)**2)
+        H_rayleigh = torch.sqrt(torch.normal(0, math.sqrt(1/2), size=Tx_sig.shape).to(device)**2 +
+                                torch.normal(0, math.sqrt(1/2), size=Tx_sig.shape).to(device)**2)
         # 生成对数正态阴影衰落
         shadow = torch.exp(torch.normal(
-            0, sigma_shadow, size=Tx_sig.shape).to(self.device) / 10)
+            0, sigma_shadow, size=Tx_sig.shape).to(device) / 10)
         # 应用Suzuki衰落
         Tx_sig = Tx_sig * H_rayleigh * shadow
         Rx_sig = self.AWGN(Tx_sig, n_var)
@@ -212,7 +209,7 @@ class Channels():
     def Nakagami(self, Tx_sig, n_var, m=2):
         # 生成Nakagami-m信道系数
         gamma_dist = Gamma(concentration=m, rate=1.0)
-        gamma_samples = gamma_dist.sample(Tx_sig.shape).to(self.device)
+        gamma_samples = gamma_dist.sample(Tx_sig.shape).to(device)
         H = torch.sqrt(gamma_samples / m)
         # 应用Nakagami-m衰落
         Tx_sig = Tx_sig * H
