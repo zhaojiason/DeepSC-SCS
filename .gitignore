@@ -14,7 +14,7 @@ torch-venv/
 
 # Data files
 data/
-
+pre_data/
 # models
 checkpoints/
 /checkpoints/deepsc-AWGN/*

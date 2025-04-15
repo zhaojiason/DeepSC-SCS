@@ -294,8 +294,12 @@ def train_step(model, src, trg, n_var, pad, opt, criterion, channel, mi_net=None
         Rx_sig = channels.Rayleigh(Tx_sig, n_var)
     elif channel == 'Rician':
         Rx_sig = channels.Rician(Tx_sig, n_var)
+    elif channel == 'Suzuki':
+        Rx_sig = channels.Suzuki(Tx_sig, n_var)
+    elif channel == 'Nakagami':
+        Rx_sig = channels.Nakagami(Tx_sig, n_var)
     else:
-        raise ValueError("Please choose from AWGN, Rayleigh, and Rician")
+        raise ValueError("Please choose from AWGN, Rayleigh, Suzuki, Rician and Nakagami")
 
     channel_dec_output = model.channel_decoder(Rx_sig)
     dec_output = model.decoder(
@@ -378,9 +382,12 @@ def val_step(model, src, trg, n_var, pad, criterion, channel):
         Rx_sig = channels.Rayleigh(Tx_sig, n_var)
     elif channel == 'Rician':
         Rx_sig = channels.Rician(Tx_sig, n_var)
+    elif channel == 'Suzuki':
+        Rx_sig = channels.Suzuki(Tx_sig, n_var)
+    elif channel == 'Nakagami':
+        Rx_sig = channels.Nakagami(Tx_sig, n_var)
     else:
-        raise ValueError("Please choose from AWGN, Rayleigh, and Rician")
-
+        raise ValueError("Please choose from AWGN, Rayleigh, Suzuki, Rician and Nakagami")
     channel_dec_output = model.channel_decoder(Rx_sig)
     dec_output = model.decoder(
         trg_inp, channel_dec_output, look_ahead_mask, src_mask)
@@ -416,8 +423,12 @@ def greedy_decode(model, src, n_var, max_len, padding_idx, start_symbol, channel
         Rx_sig = channels.Rayleigh(Tx_sig, n_var)
     elif channel == 'Rician':
         Rx_sig = channels.Rician(Tx_sig, n_var)
+    elif channel == 'Suzuki':
+        Rx_sig = channels.Suzuki(Tx_sig, n_var)
+    elif channel == 'Nakagami':
+        Rx_sig = channels.Nakagami(Tx_sig, n_var)
     else:
-        raise ValueError("Please choose from AWGN, Rayleigh, and Rician")
+        raise ValueError("Please choose from AWGN, Rayleigh, Suzuki, Rician and Nakagami")
 
     # channel_enc_output = model.blind_csi(channel_enc_output)
 
@@ -472,12 +483,16 @@ def beam_search_decode(model, src, n_var, max_len, padding_idx, start_symbol, ch
         Rx_sig = channels.Rayleigh(Tx_sig, n_var)
     elif channel == 'Rician':
         Rx_sig = channels.Rician(Tx_sig, n_var)
+    elif channel == 'Suzuki':
+        Rx_sig = channels.Suzuki(Tx_sig, n_var)
+    elif channel == 'Nakagami':
+        Rx_sig = channels.Nakagami(Tx_sig, n_var)
     else:
-        raise ValueError("Invalid channel type")
+        raise ValueError("Please choose from AWGN, Rayleigh, Suzuki, Rician and Nakagami")
 
     memory = model.channel_decoder(Rx_sig)
 
-    # 束搜索初始化（每个样本独立处理）
+    # 束搜索初始化
     beams = [([start_symbol], 0.0)] * batch_size
     memory = memory.repeat_interleave(
         beam_size, dim=0) if beam_size > 1 else memory

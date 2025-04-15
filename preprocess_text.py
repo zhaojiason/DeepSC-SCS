@@ -13,9 +13,9 @@ from transformers import BertTokenizer
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input-data-dir', default='', type=str)
-parser.add_argument('--output-train-dir', default='train_data.pkl', type=str)
-parser.add_argument('--output-test-dir', default='test_data.pkl', type=str)
-parser.add_argument('--output-vocab', default='vocab.json', type=str)
+parser.add_argument('--output-train-dir', default='processed_data_1/train_data.pkl', type=str)
+parser.add_argument('--output-test-dir', default='processed_data_1/test_data.pkl', type=str)
+parser.add_argument('--output-vocab', default='processed_data_1/vocab.json', type=str)
 parser.add_argument('--input-encoding', default='utf-8', type=str, help='Encoding for input files')
 parser.add_argument('--output-encoding', default='utf-8', type=str, help='Encoding for output files')
 
@@ -68,7 +68,7 @@ def process(text_path, encoding='utf-8'):
     return raw_data_input
 
 def main(args):
-    data_dir = 'data/'
+    data_dir = 'pre_data/'
     args.input_data_dir = os.path.join(data_dir, args.input_data_dir)
     args.output_train_dir = os.path.join(data_dir, args.output_train_dir)
     args.output_test_dir = os.path.join(data_dir, args.output_test_dir)
