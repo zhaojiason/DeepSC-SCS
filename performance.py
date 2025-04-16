@@ -60,50 +60,67 @@ class Similarity:
 
 
 def performance(args, SNR, net):
-    # 仅初始化一次数据加载器
     test_eur = EurDataset('test')
     test_iterator = DataLoader(test_eur, batch_size=args.batch_size, 
                              num_workers=0, pin_memory=True,
                              collate_fn=collate_data, shuffle=False)
-    StoT = SeqtoText(token_to_idx, end_idx)
-    
+    StoT = SeqtoText(token_to_idx, end_idx=vocab['[SEP]'])
+    bleu_score_1gram = BleuScore(1.0, 0.0, 0.0, 0.0)
     net.eval()
+    
     with torch.no_grad():
-
         noise_std = SNR_to_noise(SNR)
-        
-        # 获取第一个batch的数据
-        sample_batch = next(iter(test_iterator))
-        sents = sample_batch.to(device)
-        
+        total_similarity = 0.0
+        total_bleu_score = 0.0
+        count = 0
+
+        # 获取一个批次的数据
+        batch = next(iter(test_iterator))
+        sents = batch.to(device)
+        batch_size = sents.size(0)
+
         # 生成预测
         out = greedy_decode(net, sents, noise_std, args.MAX_LENGTH,
-                           pad_idx, start_idx, args.channel)
-        
-        # 解码文本并去掉[CLS]标签
-        generated = [StoT.sequence_to_text(seq).split()[1:] for seq in out.cpu().numpy().tolist()]
-        target = [StoT.sequence_to_text(seq).split()[1:] for seq in sents.cpu().numpy().tolist()]
-        
-        # 将列表转换为字符串
-        generated_str = [' '.join(seq) for seq in generated]
-        target_str = [' '.join(seq) for seq in target]
-        
-        # 仅取第一条样本展示
+                          pad_idx, start_idx, args.channel)
+
+        for i in range(batch_size):
+            # 解码生成文本
+            generated = StoT.sequence_to_text(out.cpu().numpy().tolist()[i])
+            generated = generated.split('[SEP]')[0].replace('[CLS]', '').replace('[PAD]', '').strip()
+
+            # 解码目标文本
+            target = StoT.sequence_to_text(sents.cpu().numpy().tolist()[i])
+            target = target.split('[SEP]')[0].replace('[CLS]', '').replace('[PAD]', '').strip()
+
+            # 计算相似度和BLEU分数
+            similarity = Similarity()
+            scores = similarity.compute_similarity(target, generated)
+            bleu = bleu_score_1gram.compute_bleu_score(generated, target)
+
+            total_similarity += scores
+            total_bleu_score += bleu
+            count += 1
+
+        # 计算平均相似度和BLEU分数
+        avg_similarity = total_similarity / count if count > 0 else 0.0
+        avg_bleu_score = total_bleu_score / count if count > 0 else 0.0
+
+        # 输出最后一条文本的示例
         print("\n=== 文本对比示例 ===")
-        print(f"Target:    {target_str[-2]}")
-        print(f"Generated: {generated_str[-2]}\n")
-        
-        # 计算全局BLEU分数（可选）
-        bleu_score_1gram = BleuScore(0.25, 0.25, 0.25, 0.25)
-        cosine_similarity = Similarity()
-        scores = cosine_similarity.compute_similarity(target_str[-2], generated_str[-2])
-        print(f"[The simiarlity score is] {scores:.4f}")
-        generated_text = [StoT.sequence_to_text(seq) for seq in out.cpu().numpy().tolist()]
-        reference_text = [StoT.sequence_to_text(seq) for seq in sents.cpu().numpy().tolist()]
-        return bleu_score_1gram.compute_bleu_score(generated_text, reference_text)
+        print(f"Target:    {target}")
+        print(f"Generated: {generated}")
+        print(f"[Similarity Score] {scores:.4f}")
+        print(f"[BLEU Score] {bleu:.4f}")
+
+        print(f"\n=== 总体性能 ===")
+        print(f"Average Similarity Score: {avg_similarity:.4f}")
+        print(f"Average BLEU Score: {avg_bleu_score:.4f}")
+
+        return avg_similarity, avg_bleu_score
 
 def interactive(args, SNR, net):
     StoT = SeqtoText(token_to_idx, end_idx=vocab['[SEP]'])
+    bleu_score_1gram = BleuScore(1.0, 0.0, 0.0, 0.0)
     net.eval()
     
     with torch.no_grad():
@@ -139,7 +156,9 @@ def interactive(args, SNR, net):
                 print(f"[生成结果] {generated}")
                 similarity = Similarity()
                 scores = similarity.compute_similarity(user_input, generated)
+                bleu_score = bleu_score_1gram.compute_bleu_score(generated, user_input)
                 print(f"[The simiarlity score is] {scores:.4f}")
+                print(f"[The BLEU score is] {bleu_score:.4f}")
             except Exception as e:
                 print(f"处理出错: {str(e)}")
                 continue
@@ -149,32 +168,30 @@ def interactive(args, SNR, net):
 
 def interactive_performance(args, SNR, net, user_input, token_to_idx, start_idx, end_idx, pad_idx, device, channel):
     StoT = SeqtoText(token_to_idx, end_idx)
-    net.eval()  # 显式设置为评估模式
+    net.eval()
     
     with torch.no_grad():
         noise_std = SNR_to_noise(SNR)
         
         try:
             # 文本转序列
-            seq = StoT.text_to_sequence(user_input.lower(), add_start_token=True, add_end_token=True)
+            seq = StoT.text_to_sequence(user_input.lower())
             
-            # 确保张量在正确设备上
             seq_tensor = torch.tensor([seq], dtype=torch.long).to(device)
             
-            # 生成预测
             out = greedy_decode(
                 net, seq_tensor, noise_std, args.MAX_LENGTH,
                 pad_idx, start_idx, channel
             )
             
-            # 解码并清理输出
             generated = StoT.sequence_to_text(out.cpu().numpy().tolist()[0])
-            generated = generated.split('<END>')[0].replace('<START>','').replace('<PAD>', '').strip()
+            generated = generated.split('[SEP]')[0].replace('[CLS]','').replace('[PAD]', '').strip()
             similarity = Similarity()
             scores = similarity.compute_similarity(user_input, generated)
             return generated, scores
         except Exception as e:
-            return f"处理出错: {str(e)}"
+            # 修改处：返回包含两个元素的tuple
+            return f"处理出错: {str(e)}", 0.0  # 第二个参数是默认相似度
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -253,12 +270,9 @@ if __name__ == '__main__':
     # ============== 修复5：混合精度条件执行 ==============
     with torch.no_grad():
         if torch.cuda.is_available():
-            with torch.cuda.amp.autocast():
-                bleu_score = performance(args, SNR, deepsc)
+            bleu_score = performance(args, SNR, deepsc)
         else:
             # 进行用户交互测试
             interactive(args, SNR, deepsc)
-            bleu_score = performance(args, SNR, deepsc)
+            bleu_score, similarity_score = performance(args, SNR, deepsc)
             
-    
-    print(f"BLEU Score: {bleu_score}")

@@ -18,7 +18,7 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser()
 #parser.add_argument('--data-dir', default='data/train_data.pkl', type=str)
 parser.add_argument('--vocab-file', default='vocab.json', type=str)
-parser.add_argument('--checkpoint-path', default='checkpoints/AWGN', type=str)
+parser.add_argument('--checkpoint-path', default='checkpoints/AWGN_data1', type=str)
 parser.add_argument('--channel', default='AWGN', type=str, help = 'Please choose AWGN, Rayleigh, Rician, Suzuki and Nakagami')
 parser.add_argument('--MAX-LENGTH', default=30, type=int)
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
@@ -40,13 +40,14 @@ def setup_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 def train(epoch, args, net, mi_net=None):
-    train_eur= EurDataset('train')
+    train_eur = EurDataset('train')
     train_iterator = DataLoader(train_eur, batch_size=args.batch_size, num_workers=0,
                                 pin_memory=True, collate_fn=collate_data)
     pbar = tqdm(train_iterator)
 
     noise_std = np.random.uniform(SNR_to_noise(5), SNR_to_noise(10), size=(1))
 
+    total_loss = 0.0
     for sents in pbar:
         sents = sents.to(device)
 
@@ -67,6 +68,10 @@ def train(epoch, args, net, mi_net=None):
                     epoch + 1, loss
                 )
             )
+        total_loss += loss
+
+    # Return the average training loss
+    return total_loss / len(train_iterator)
 def validate(epoch, args, net):
     test_eur = EurDataset('test')
     test_iterator = DataLoader(test_eur, batch_size=args.batch_size, num_workers=0,
@@ -91,7 +96,7 @@ def validate(epoch, args, net):
 if __name__ == '__main__':
     # setup_seed(10)
     args = parser.parse_args()
-    args.vocab_file = 'data/' + args.vocab_file
+    args.vocab_file = 'data/processed_data_1/' + args.vocab_file
     
     """ 准备检查点目录 """
     if not os.path.exists(args.checkpoint_path):
@@ -144,9 +149,20 @@ if __name__ == '__main__':
         """ 训练循环（每个epoch后保存检查点） """
         for epoch in range(start_epoch, args.epochs):
             start_time = time.time()
-            train(epoch, args, deepsc)
+            
+            # 训练
+            train_loss = train(epoch, args, deepsc, mi_net)
+            
+            # 验证
             avg_acc = validate(epoch, args, deepsc)
-
+            
+            # 将训练和验证损失写入日志文件
+            log_file = args.log_file if hasattr(args, 'log_file') else 'training_log.txt'
+            with open(log_file, 'a') as f:
+                f.write(f'Checkpoint directory:{args.checkpoints_path}\n')
+                f.write(f'Epoch: {epoch+1}; Type: Train; Loss: {train_loss:.5f}\n')
+                f.write(f'Epoch: {epoch+1}; Type: VAL; Loss: {avg_acc:.5f}\n')
+            
             # 保存最佳模型
             if avg_acc < record_acc:
                 torch.save(deepsc.state_dict(), best_checkpoint_path)
