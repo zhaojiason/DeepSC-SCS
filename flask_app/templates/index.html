@@ -45,7 +45,7 @@
               <label class="io-label">Similarity Analysis</label>
               <div class="progress-wrapper">
                 <div class="progress-text" id="progressText">
-                  <span class="percentage">{{ "%.4f"|format(similarity * 100) }}%</span>
+                  <span class="percentage">{{ "%.4f"|format(similarity * 100 if similarity is not none else 0) }}%</span>
                   <span class="label">Text Similarity</span>
                 </div>
                 <!-- Bootstrap进度条 -->
