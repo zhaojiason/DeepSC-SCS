@@ -31,11 +31,17 @@ class BleuScore():
         for (sent1, sent2) in zip(real, predicted):
             sent1 = remove_tags(sent1).split()
             sent2 = remove_tags(sent2).split()
-            score.append(sentence_bleu([sent1], sent2,
-                                       weights=(self.w1, self.w2,
-                                                self.w3, self.w4),
-                                       smoothing_function=smoothing_function.method1))
-        # return the average sentence bleu score
+            # Check if both sentences have content after processing
+            if sent1 and sent2:
+                score.append(sentence_bleu([sent1], sent2,
+                                           weights=(self.w1, self.w2, self.w3, self.w4),
+                                           smoothing_function=smoothing_function.method1))
+            else:
+                # Handle cases where one or both sentences are empty
+                score.append(0.0)  # Assign a score of 0.0 for empty sentences
+        # Return the average sentence BLEU score
+        if len(score) == 0:
+            return 0.0  # Return 0.0 if no scores were calculated
         avg_score = sum(score)/len(score)
         return round(avg_score, 5)
 
