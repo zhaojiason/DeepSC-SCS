@@ -1,0 +1,27 @@
+Checkpoint directory:checkpoints/AWGN_data1
+Epoch: 9; Type: Train; Loss: 0.55238
+Epoch: 9; Type: VAL; Loss: 0.52580
+Checkpoint directory:checkpoints/Rayleigh_data1
+Epoch: 7; Type: Train; Loss: 0.73330
+Epoch: 7; Type: VAL; Loss: 0.70334
+Checkpoint directory:checkpoints/AWGN_data1
+Epoch: 10; Type: Train; Loss: nan
+Epoch: 10; Type: VAL; Loss: nan
+Checkpoint directory:checkpoints/Rician_data1
+Epoch: 7; Type: Train; Loss: 0.72125
+Epoch: 7; Type: VAL; Loss: 0.68944
+Checkpoint directory:checkpoints/Rayleigh_data2
+Epoch: 1; Type: Train; Loss: 1.82152
+Epoch: 1; Type: VAL; Loss: 1.16699
+Checkpoint directory:checkpoints/Rayleigh_data2
+Epoch: 2; Type: Train; Loss: 1.21078
+Epoch: 2; Type: VAL; Loss: 1.01835
+Checkpoint directory:checkpoints/Rician_data2
+Epoch: 1; Type: Train; Loss: 1.63545
+Epoch: 1; Type: VAL; Loss: 0.95527
+Checkpoint directory:checkpoints/Rician_data2
+Epoch: 2; Type: Train; Loss: 1.00444
+Epoch: 2; Type: VAL; Loss: 0.86747
+Checkpoint directory:checkpoints/Rician_data2
+Epoch: 3; Type: Train; Loss: 0.97567
+Epoch: 3; Type: VAL; Loss: 0.86411

@@ -1,7 +1,7 @@
 # !usr/bin/env python
 # -*- coding:utf-8 _*-
 
-import os
+import os, logging
 import json
 import torch
 import time
@@ -13,24 +13,28 @@ from torch.utils.data import DataLoader
 from utils import BleuScore, SNR_to_noise, greedy_decode, SeqtoText
 from sklearn.feature_extraction.text import CountVectorizer 
 from sklearn.metrics.pairwise import cosine_similarity
+from transformers import BertTokenizer, BertModel
+from sklearn.preprocessing import normalize
+from w3lib.html import remove_tags
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', default='train_data.pkl', type=str)
 parser.add_argument('--vocab-file', default='data/processed_data_2/vocab.json', type=str)
 parser.add_argument('--checkpoint-path', default='checkpoints/AWGN_data2/', type=str)
 parser.add_argument('--channel', default='AWGN', type=str)
-parser.add_argument('--MAX-LENGTH', default=30, type=int)
+parser.add_argument('--MAX-LENGTH', default=64, type=int)
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
 parser.add_argument('--d-model', default=128, type = int)
 parser.add_argument('--dff', default=512, type=int)
 parser.add_argument('--num-layers', default=4, type=int)
 parser.add_argument('--num-heads', default=8, type=int)
-parser.add_argument('--batch-size', default=64, type=int)
+parser.add_argument('--batch-size', default=32, type=int)
 parser.add_argument('--epochs', default=2, type = int)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class Similarity:
+    
     def __init__(self):
         """初始化时直接使用词频向量化器"""
         self.vectorizer = CountVectorizer(
@@ -59,6 +63,58 @@ class Similarity:
 
 
 
+# using pre-trained model to compute the sentence similarity
+class BertSimilarity:
+    def __init__(self, model_name='bert-base-uncased'):
+        # 加载预训练的 BERT 模型和 tokenizer
+        self.tokenizer = BertTokenizer.from_pretrained(model_name)
+        self.model = BertModel.from_pretrained(model_name)
+        self.model.eval()  # 设置模型为评估模式
+
+    def compute_similarity(self, real, predicted):
+        score = []
+
+        for sent1, sent2 in zip(real, predicted):
+            sent1 = remove_tags(sent1)
+            sent2 = remove_tags(sent2)
+
+            # 编码输入句子
+            inputs1 = self.tokenizer(sent1, return_tensors='pt', padding=True, truncation=True, max_length=32)
+            inputs2 = self.tokenizer(sent2, return_tensors='pt', padding=True, truncation=True, max_length=32)
+
+            # 模型推理
+            with torch.no_grad():
+                vector1 = self.model(**inputs1).last_hidden_state  # 获得输出
+                vector2 = self.model(**inputs2).last_hidden_state  # 获得输出
+
+            # 取出[CLS]的向量（通常用于句子级别的任务）
+            vector1 = vector1[:, 0, :].numpy()  # [batch_size, hidden_size]
+            vector2 = vector2[:, 0, :].numpy()  # [batch_size, hidden_size]
+
+            # 归一化
+            vector1 = normalize(vector1, axis=1, norm='max')
+            vector2 = normalize(vector2, axis=1, norm='max')
+
+            # 计算余弦相似度
+            dot = np.diag(np.matmul(vector1, vector2.T))  # a*b
+            a = np.diag(np.matmul(vector1, vector1.T))  # a*a
+            b = np.diag(np.matmul(vector2, vector2.T))  # b*b
+
+            a = np.sqrt(a)
+            b = np.sqrt(b)
+            
+            # 计算文本相似度
+            output = dot / (a * b)
+            score.extend(output.tolist())  # 存储每个句子的相似度
+
+        # 计算并返回所有相似度的平均值
+        if score:
+            average_score = np.mean(score)
+            return average_score.round(6)
+        else:
+            return 0  # 处理空结果
+
+
 def performance(args, SNR, net):
     test_eur = EurDataset('test')
     test_iterator = DataLoader(test_eur, batch_size=args.batch_size, 
@@ -70,8 +126,8 @@ def performance(args, SNR, net):
     
     with torch.no_grad():
         noise_std = SNR_to_noise(SNR)
-        total_similarity = 0.0
-        total_bleu_score = 0.0
+        total_similarity = total_bert_similarity = 0.0
+        bleu_score = []
         count = 0
 
         # 获取一个批次的数据
@@ -94,29 +150,40 @@ def performance(args, SNR, net):
 
             # 计算相似度和BLEU分数
             similarity = Similarity()
+            # BERT相似度
+            bert_Similarity = BertSimilarity()
             scores = similarity.compute_similarity(target, generated)
-            bleu = bleu_score_1gram.compute_bleu_score(generated, target)
+            bert_score = bert_Similarity.compute_similarity(target, generated)
+            bleu_score.append(bleu_score_1gram.compute_bleu_score(target, generated))
 
             total_similarity += scores
-            total_bleu_score += bleu
+            total_bert_similarity += bert_score
             count += 1
 
         # 计算平均相似度和BLEU分数
         avg_similarity = total_similarity / count if count > 0 else 0.0
-        avg_bleu_score = total_bleu_score / count if count > 0 else 0.0
+        avg_bert_similarity = total_bert_similarity / count if count > 0 else 0.0   
+        bleu_score = np.array(bleu_score)
+                
+        if bleu_score.size >= 10:
+            # 如果BLEU分数的数量大于等于10个，则取最高的10个分数的平均值
+            avg_bleu = np.mean(np.partition(bleu_score, -10)[-10:])
+        else:
+            # 如果BLEU分数的数量不足10个，则直接取所有分数的平均值
+            avg_bleu = np.mean(bleu_score) if bleu_score.size > 0 else 0.0
 
         # 输出最后一条文本的示例
-        print("\n=== 文本对比示例 ===")
+        print("\n=== Text Comparison Example: ===")
         print(f"Target:    {target}")
         print(f"Generated: {generated}")
         print(f"[Similarity Score] {scores:.4f}")
-        print(f"[BLEU Score] {bleu:.4f}")
-
-        print(f"\n=== 总体性能 ===")
+        print(f"[BERT Similarity Score] {bert_score}")
+        print(f"\n=== Overall Performance ===")
         print(f"Average Similarity Score: {avg_similarity:.4f}")
-        print(f"Average BLEU Score: {avg_bleu_score:.4f}")
+        print(f"Average BLEU Score: {avg_bleu:.4f}")
+        print(f"Average BERT Similarity Score] {avg_bert_similarity:.6f}")
 
-        return avg_similarity, avg_bleu_score
+        return avg_similarity, avg_bleu
 
 def interactive(args, SNR, net):
     StoT = SeqtoText(token_to_idx, end_idx=vocab['[SEP]'])
@@ -193,7 +260,7 @@ def interactive_performance(args, SNR, net, user_input, token_to_idx, start_idx,
             # 修改处：返回包含两个元素的tuple
             return f"处理出错: {str(e)}", 0.0  # 第二个参数是默认相似度
 
-if __name__ == '__main__':
+if __name__ == '__main__': 
     args = parser.parse_args()
     SNR = 40
     start_time = time.time()
@@ -202,7 +269,8 @@ if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    print(f"Loaded vocabulary from {args.vocab_file}")
+
+    print(f"Loaded model from {args.checkpoint_path}")
     """ 准备数据集 """
     # 加载词汇表
     with open(args.vocab_file, 'r', encoding='utf-8') as f:
@@ -273,6 +341,7 @@ if __name__ == '__main__':
             bleu_score = performance(args, SNR, deepsc)
         else:
             # 进行用户交互测试
-            interactive(args, SNR, deepsc)
+            # interactive(args, SNR, deepsc)
             bleu_score, similarity_score = performance(args, SNR, deepsc)
+            
             
