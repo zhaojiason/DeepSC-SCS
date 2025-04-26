@@ -45,7 +45,7 @@ def initialize_model(channel_type):
     ).to(device)
     
     # 动态构建检查点路径
-    checkpoint_path = os.path.join(f'checkpoints/{channel_type}_data2/', 'best_checkpoint.pth')
+    checkpoint_path = os.path.join(f'checkpoints/{channel_type}_data1', 'best_checkpoint.pth')
     print(f"Loading model from: {checkpoint_path}")
     
     if not os.path.exists(checkpoint_path):
@@ -110,7 +110,6 @@ def index():
                         output_text=output,
                         similarity=round(similarity, 6) if similarity else None)
 
-# ============== 新增配置更新路由 ==============
 @app.route('/update_config', methods=['POST'])
 def update_config():
     try:

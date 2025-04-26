@@ -38,20 +38,18 @@
         </div>
 
         <!-- 新增相似度板块 -->
-        {% if similarity is defined %}
+        {% if similarity is defined and similarity is not none %}
         <div class="similarity-container mt-4">
           <div class="io-box">
             <div class="similarity-content">
               <label class="io-label">Similarity Analysis</label>
               <div class="progress-wrapper">
                 <div class="progress-text" id="progressText">
-                  <span class="percentage">{{ "%.4f"|format(similarity * 100 if similarity is not none else 0) }}%</span>
+                  <span class="percentage">{{ "%.4f"|format(similarity * 100) }}%</span>
                   <span class="label">Text Similarity</span>
                 </div>
-                <!-- Bootstrap进度条 -->
                 <div class="progress mt-2">
-                  <div id="progressBar"
-                    class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                  <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
                     role="progressbar" aria-valuemin="0" aria-valuemax="100">
                     {{ "%.4f"|format(similarity * 100) }}%
                   </div>
@@ -73,8 +71,7 @@
   </div>
 
   <!-- Modal -->
-  <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel"
-    aria-hidden="true">
+  <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
@@ -145,7 +142,7 @@
     document.addEventListener('DOMContentLoaded', function () {
       const progressBar = document.getElementById('progressBar');
       const similarity = parseFloat('{{ similarity if similarity is defined else 0 }}');
-      
+
       if (progressBar) {
         if (!isNaN(similarity)) {
           progressBar.style.width = `${similarity * 100}%`;
@@ -173,7 +170,7 @@
 
       // 页面加载时判断是否是刷新操作
       if (window.performance && window.performance.navigation &&
-          window.performance.navigation.type === window.performance.navigation.TYPE_RELOAD) {
+        window.performance.navigation.type === window.performance.navigation.TYPE_RELOAD) {
         // 清空输入框
         let inputText = document.querySelector('textarea[name="inputText"]');
         if (inputText) inputText.value = '';
@@ -198,11 +195,6 @@
   </script>
 
   <script>
-    // 保存当前配置的全局变量
-    let currentConfig = {
-      channelType: 'AWGN',
-      snr: 20
-    };
 
     // 初始化时获取配置
     async function loadCurrentConfig() {
@@ -217,20 +209,25 @@
 
     window.addEventListener('DOMContentLoaded', loadCurrentConfig);
 
-    // 打开模态框时填充当前配置
     document.getElementById('exampleModal').addEventListener('show.bs.modal', () => {
       document.getElementById('channelType').value = currentConfig.channelType;
       document.getElementById('snrInput').value = currentConfig.snr;
     });
 
-    // 保存配置
     document.getElementById('saveConfig').addEventListener('click', async () => {
       const channelType = document.getElementById('channelType').value;
       const snrInput = document.getElementById('snrInput');
 
-      let snr = parseInt(snrInput.value) || currentConfig.snr;
+      // 明确处理空输入
+      let snr;
+      if (snrInput.value.trim() === "") {
+        snr = currentConfig.snr; // 或者设置为 0
+      } else {
+        snr = parseInt(snrInput.value);
+      }
 
-      if (snr < 0 || snr > 20) {
+      // 验证 SNR
+      if (isNaN(snr) || snr < 0 || snr > 20) {
         snrInput.classList.add('is-invalid');
         return;
       }
@@ -244,7 +241,7 @@
 
         const result = await response.json();
         if (result.status === 'success') {
-          currentConfig = result.new_config;
+          currentConfig = result.new_config; // 更新当前配置
           bootstrap.Modal.getInstance(document.getElementById('exampleModal')).hide();
           showToast('Configuration updated successfully');
         } else {
@@ -256,7 +253,6 @@
       }
     });
 
-    // 实时SNR验证
     document.getElementById('snrInput').addEventListener('input', function () {
       this.classList.remove('is-invalid');
       const value = parseInt(this.value);

@@ -1,7 +1,7 @@
 # !usr/bin/env python
 # -*- coding:utf-8 _*-
 
-import os, logging
+import os
 import json
 import torch
 import time
@@ -20,8 +20,8 @@ from w3lib.html import remove_tags
 parser = argparse.ArgumentParser()
 parser.add_argument('--data-dir', default='train_data.pkl', type=str)
 parser.add_argument('--vocab-file', default='data/processed_data_2/vocab.json', type=str)
-parser.add_argument('--checkpoint-path', default='checkpoints/AWGN_data2/', type=str)
-parser.add_argument('--channel', default='AWGN', type=str)
+parser.add_argument('--checkpoint-path', default='checkpoints/Suzuki_data2/', type=str)
+parser.add_argument('--channel', default='Suzuki', type=str)
 parser.add_argument('--MAX-LENGTH', default=64, type=int)
 parser.add_argument('--MIN-LENGTH', default=4, type=int)
 parser.add_argument('--d-model', default=128, type = int)
@@ -149,19 +149,19 @@ def performance(args, SNR, net):
             target = target.split('[SEP]')[0].replace('[CLS]', '').replace('[PAD]', '').strip()
 
             # 计算相似度和BLEU分数
-            similarity = Similarity()
+            # similarity = Similarity()
             # BERT相似度
             bert_Similarity = BertSimilarity()
-            scores = similarity.compute_similarity(target, generated)
+            # scores = similarity.compute_similarity(target, generated)
             bert_score = bert_Similarity.compute_similarity(target, generated)
             bleu_score.append(bleu_score_1gram.compute_bleu_score(target, generated))
 
-            total_similarity += scores
+            # total_similarity += scores
             total_bert_similarity += bert_score
             count += 1
 
         # 计算平均相似度和BLEU分数
-        avg_similarity = total_similarity / count if count > 0 else 0.0
+        # avg_similarity = total_similarity / count if count > 0 else 0.0
         avg_bert_similarity = total_bert_similarity / count if count > 0 else 0.0   
         bleu_score = np.array(bleu_score)
                 
@@ -176,14 +176,15 @@ def performance(args, SNR, net):
         print("\n=== Text Comparison Example: ===")
         print(f"Target:    {target}")
         print(f"Generated: {generated}")
-        print(f"[Similarity Score] {scores:.4f}")
+        # print(f"[Similarity Score] {scores:.4f}")
         print(f"[BERT Similarity Score] {bert_score}")
         print(f"\n=== Overall Performance ===")
-        print(f"Average Similarity Score: {avg_similarity:.4f}")
+        # print(f"Average Similarity Score: {avg_similarity:.4f}")
         print(f"Average BLEU Score: {avg_bleu:.4f}")
-        print(f"Average BERT Similarity Score] {avg_bert_similarity:.6f}")
+        print(f"[Average BERT Similarity Score] {avg_bert_similarity:.6f}")
 
-        return avg_similarity, avg_bleu
+        return avg_bert_similarity, avg_bleu
+        # return avg_similarity, avg_bert_similarity
 
 def interactive(args, SNR, net):
     StoT = SeqtoText(token_to_idx, end_idx=vocab['[SEP]'])
