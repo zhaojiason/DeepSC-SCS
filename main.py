@@ -2,6 +2,7 @@
 
 import os
 import argparse
+import sys
 import time
 import json
 import torch
@@ -10,7 +11,7 @@ import torch.nn as nn
 import numpy as np
 from utils import SNR_to_noise, initNetParams, train_step, val_step, train_mi
 from dataset import EurDataset, collate_data
-from models.transceiver import DeepSC
+from models.transceiver import DeepSC, Huffman_RS
 from models.mutual_info import Mine
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -119,9 +120,22 @@ if __name__ == '__main__':
     num_vocab = len(token_to_idx)
 
     """ 定义模型和优化器 """
-    deepsc = DeepSC(args.num_layers, num_vocab, num_vocab,
-                    num_vocab, num_vocab, args.d_model, args.num_heads,
-                    args.dff, 0.1).to(device)
+    # deepsc = DeepSC(args.num_layers, num_vocab, num_vocab,
+    #                 num_vocab, num_vocab, args.d_model, args.num_heads,
+    #                 args.dff, 0.1).to(device)
+    # another model
+    deepsc = Huffman_RS(
+        num_layers   = args.num_layers,
+        src_vocab_size = num_vocab,
+        trg_vocab_size = num_vocab,
+        src_max_len  = num_vocab,
+        trg_max_len  = num_vocab,
+        d_model      = args.d_model,
+        num_heads    = args.num_heads,
+        dff          = args.dff,
+        dropout      = 0.1,
+        rs_nsym      = 32 
+    ).to(device)
     mi_net = Mine().to(device)
     criterion = nn.CrossEntropyLoss(reduction='none')
     optimizer = torch.optim.Adam(deepsc.parameters(),
@@ -145,48 +159,97 @@ if __name__ == '__main__':
         record_acc = checkpoint['record_acc']
         print(f'Resuming from epoch {start_epoch}...')
 
+    # try:
+    #     """ 训练循环（每个epoch后保存检查点） """
+    #     for epoch in range(start_epoch, args.epochs):
+    #         start_time = time.time()
+            
+    #         # 训练
+    #         train_loss = train(epoch, args, deepsc, mi_net)
+            
+    #         # 验证
+    #         avg_acc = validate(epoch, args, deepsc)
+            
+    #         # 将训练和验证损失写入日志文件
+    #         log_file = args.log_file if hasattr(args, 'log_file') else 'training_log.txt'
+    #         with open(log_file, 'a') as f:
+    #             f.write(f'Checkpoint directory:{args.checkpoints_path}\n')
+    #             f.write(f'Epoch: {epoch+1}; Type: Train; Loss: {train_loss:.5f}\n')
+    #             f.write(f'Epoch: {epoch+1}; Type: VAL; Loss: {avg_acc:.5f}\n')
+            
+    #         # 保存最佳模型
+    #         if avg_acc < record_acc:
+    #             torch.save(deepsc.state_dict(), best_checkpoint_path)
+    #             record_acc = avg_acc
+    #             print(f'Epoch {epoch+1}: New best model saved')
+
+    #         # 每个epoch后保存恢复点（覆盖写入）
+    #         torch.save({
+    #             'epoch': epoch,
+    #             'model_state_dict': deepsc.state_dict(),
+    #             'optimizer_state_dict': optimizer.state_dict(),
+    #             'record_acc': record_acc
+    #         }, last_checkpoint_path)
+    #         print(f'Epoch {epoch+1}: Checkpoint saved')
+
+    #     """ 正常完成训练后清理临时检查点 """
+    #     if os.path.exists(last_checkpoint_path):
+    #         os.remove(last_checkpoint_path)
+    #         print('Training completed, temporary checkpoints cleared')
+
+    # except (KeyboardInterrupt, Exception) as e:
+    #     """ 中断时保留检查点并提示恢复方法 """
+    #     print(f'\nTraining interrupted at epoch {epoch}: {str(e)}')
+    #     print(f'Last checkpoint saved to {last_checkpoint_path}, resume training with this file.')
     try:
         """ 训练循环（每个epoch后保存检查点） """
         for epoch in range(start_epoch, args.epochs):
             start_time = time.time()
-            
+
             # 训练
             train_loss = train(epoch, args, deepsc, mi_net)
-            
+
             # 验证
             avg_acc = validate(epoch, args, deepsc)
-            
+
             # 将训练和验证损失写入日志文件
             log_file = args.log_file if hasattr(args, 'log_file') else 'training_log.txt'
             with open(log_file, 'a') as f:
-                f.write(f'Checkpoint directory:{args.checkpoints_path}\n')
+                f.write(f'Checkpoint directory:{args.checkpoint_path}\n')
                 f.write(f'Epoch: {epoch+1}; Type: Train; Loss: {train_loss:.5f}\n')
                 f.write(f'Epoch: {epoch+1}; Type: VAL; Loss: {avg_acc:.5f}\n')
-            
-            # 保存最佳模型
+
+            # 保存最佳模型（仅保存 state_dict）
             if avg_acc < record_acc:
                 torch.save(deepsc.state_dict(), best_checkpoint_path)
                 record_acc = avg_acc
                 print(f'Epoch {epoch+1}: New best model saved')
 
-            # 每个epoch后保存恢复点（覆盖写入）
+            # 每个epoch后保存恢复点（覆盖写入），包含：
+            #   - 主模型参数
+            #   - codec 子模块参数（RS 编码器/译码器）
+            #   - 优化器状态
+            #   - record_acc, epoch
             torch.save({
                 'epoch': epoch,
-                'model_state_dict': deepsc.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'record_acc': record_acc
+                'model_state_dict':        deepsc.state_dict(),
+                'codec_state_dict':        deepsc.codec.state_dict(),
+                'optimizer_state_dict':    optimizer.state_dict(),
+                'record_acc':              record_acc
             }, last_checkpoint_path)
             print(f'Epoch {epoch+1}: Checkpoint saved')
 
-        """ 正常完成训练后清理临时检查点 """
-        if os.path.exists(last_checkpoint_path):
-            os.remove(last_checkpoint_path)
-            print('Training completed, temporary checkpoints cleared')
+    except KeyboardInterrupt:
+        print("Training interrupted. Saving last checkpoint...")
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict':        deepsc.state_dict(),
+            'codec_state_dict':        deepsc.codec.state_dict(),
+            'optimizer_state_dict':    optimizer.state_dict(),
+            'record_acc':              record_acc
+        }, last_checkpoint_path)
+        sys.exit(0)
 
-    except (KeyboardInterrupt, Exception) as e:
-        """ 中断时保留检查点并提示恢复方法 """
-        print(f'\nTraining interrupted at epoch {epoch}: {str(e)}')
-        print(f'Last checkpoint saved to {last_checkpoint_path}, resume training with this file.')
 
     finally:
         """ 无论是否中断，最终保存模型 """

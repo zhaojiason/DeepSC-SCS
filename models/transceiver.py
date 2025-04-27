@@ -11,12 +11,13 @@ Transformer includes:
         3. Multihead-attention
         4. PositionwiseFeedForward
 """
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
 import math
-
+import reedsolo
 
 class PositionalEncoding(nn.Module):
     "Implement the PE function."
@@ -119,20 +120,6 @@ class PositionwiseFeedForward(nn.Module):
         x = self.dropout(x) 
         return x
 
-#class LayerNorm(nn.Module):
-#    "Construct a layernorm module (See citation for details)."
-#    # features = d_model
-#    def __init__(self, features, eps=1e-6):
-#        super(LayerNorm, self).__init__()
-#        self.a_2 = nn.Parameter(torch.ones(features))
-#        self.b_2 = nn.Parameter(torch.zeros(features))
-#        self.eps = eps
-#
-#    def forward(self, x):
-#        mean = x.mean(-1, keepdim=True)
-#        std = x.std(-1, keepdim=True)
-#        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
-    
     
 class EncoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward (defined below)"
@@ -274,9 +261,230 @@ class DeepSC(nn.Module):
                                d_model, num_heads, dff, dropout)
         
         self.dense = nn.Linear(d_model, trg_vocab_size)
+import heapq
+import pickle
+from collections import Counter, namedtuple
+
+# 用于构造 Huffman 树的节点
+HuffmanNode = namedtuple("HuffmanNode", ["freq", "symbol", "left", "right"])
+
+class HuffmanCoding:
+    def __init__(self):
+        self.code_map = {}
+        self.reverse_map = {}
+
+    def build_tree(self, data: bytes):
+        # 1) 统计所有符号（byte）的频率
+        freq = Counter(data)
+        # 2) 初始化小顶堆，heap 中每个元素都是一个 Leaf 节点
+        heap = [HuffmanNode(f, s, None, None) for s, f in freq.items()]
+        heapq.heapify(heap)
+
+        # 3) 合并最小的两个节点，直到只剩一个根节点
+        while len(heap) > 1:
+            left = heapq.heappop(heap)
+            right = heapq.heappop(heap)
+            merged = HuffmanNode(left.freq + right.freq, None, left, right)
+            heapq.heappush(heap, merged)
+
+        return heap[0]
+
+    def _build_codes(self, node, path=""):
+        if node is None:
+            return
+        # 如果是叶子节点，记录下当前的编码路径
+        if node.symbol is not None:
+            self.code_map[node.symbol] = path
+            self.reverse_map[path] = node.symbol
+        else:
+            self._build_codes(node.left,  path + "0")
+            self._build_codes(node.right, path + "1")
+
+    def fit(self, data: bytes):
+        """
+        生成 Huffman 树，并建立好 code_map / reverse_map。
+        在第一次 encode 之前务必先调用。
+        """
+        root = self.build_tree(data)
+        self._build_codes(root)
+
+    def encode(self, data: bytes) -> bytes:
+        """
+        返回一个包含：
+         [4-byte 树长度][pickled code_map][1-byte pad_len][压缩后的 payload]
+        """
+        # 序列化 code_map，用于 decode 时重建
+        tree_bytes = pickle.dumps(self.code_map)
+        tree_len   = len(tree_bytes).to_bytes(4, "big")
+
+        # 将 data 中每个字节替换成 Huffman code
+        bitstr = "".join(self.code_map[b] for b in data)
+        # 补齐到整字节
+        pad_len = (8 - len(bitstr) % 8) % 8
+        bitstr += "0" * pad_len
+        payload = int(bitstr, 2).to_bytes(len(bitstr)//8, "big")
+
+        return tree_len + tree_bytes + bytes([pad_len]) + payload
+
+    def decode(self, encoded: bytes) -> bytes:
+        """
+        反向 restore：先读树信息，再读 payload，最后按 code_map 解码。
+        """
+        tree_len = int.from_bytes(encoded[:4], "big")
+        tree_bytes = encoded[4:4+tree_len]
+        pad_len = encoded[4+tree_len]
+        payload = encoded[5+tree_len:]
+
+        # 重建编码表
+        self.code_map = pickle.loads(tree_bytes)
+        self.reverse_map = {v:k for k,v in self.code_map.items()}
+
+        # 提取 bit 字符串
+        bitstr = bin(int.from_bytes(payload, "big"))[2:].zfill(len(payload)*8)
+        if pad_len:
+            bitstr = bitstr[:-pad_len]
+
+        # 按前缀码逐位解码
+        decoded = bytearray()
+        cur = ""
+        for bit in bitstr:
+            cur += bit
+            if cur in self.reverse_map:
+                decoded.append(self.reverse_map[cur])
+                cur = ""
+        return bytes(decoded)
+
+# --------------------------------------------------
+# 1) 自定义 straight-through Autograd Function
+# --------------------------------------------------
+class _ChannelCodecST(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, features: torch.Tensor, nsym: int) -> torch.Tensor:
+        """
+        在 forward 中完整执行 Huffman + RS 编解码，模拟信道，
+        但不破坏梯度图（detach 后在 backward 中透传）。
+        """
+        # 转为 numpy bytes
+        arr = features.detach().cpu().numpy().astype(np.float32)
+        raw = arr.tobytes()
+
+        # Huffman 编码
+        h = HuffmanCoding()
+        h.fit(raw)
+        comp = h.encode(raw)
+
+        # RS 编码
+        rs = reedsolo.RSCodec(nsym)
+        coded = rs.encode(comp)
+
+        # RS 解码 + Huffman 解码
+        dec, _, _ = rs.decode(coded)
+        raw2 = h.decode(dec)
+
+        # 重构 tensor
+        arr2 = np.frombuffer(raw2, dtype=np.float32).reshape(*features.shape)
+        out = torch.from_numpy(arr2).to(features.device)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out: torch.Tensor, grad_nsym):
+        """
+        straight-through：梯度原样透传给 features，nsym 不参与反向
+        """
+        return grad_out, None
 
 
+# --------------------------------------------------
+# 2) ChannelCodec Module
+# --------------------------------------------------
+class ChannelCodec(nn.Module):
+    """
+    把上面的 ST-Function 包装成 nn.Module。
+    """
+    def __init__(self, nsym: int):
+        super(ChannelCodec, self).__init__()
+        self.nsym = nsym
 
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        # features: [B, T, feature_dim]
+        return _ChannelCodecST.apply(features, self.nsym)
+
+
+# --------------------------------------------------
+# 3) 带 Huffman+RS 的 DeepSC 主模型
+# --------------------------------------------------
+class Huffman_RS(nn.Module):
+    def __init__(self,
+                 num_layers:    int,
+                 src_vocab_size:int,
+                 trg_vocab_size:int,
+                 src_max_len:   int,
+                 trg_max_len:   int,
+                 d_model:       int,
+                 num_heads:     int,
+                 dff:           int,
+                 dropout:      float = 0.1,
+                 rs_nsym:       int   = 32):
+        super(Huffman_RS, self).__init__()
+        # 原 Encoder
+        self.encoder = Encoder(num_layers,
+                               src_vocab_size,
+                               src_max_len,
+                               d_model,
+                               num_heads,
+                               dff,
+                               dropout)
+
+        # 原 Channel Encoder → 输出维度 16
+        self.channel_encoder = nn.Sequential(
+            nn.Linear(d_model, 256),
+            nn.ReLU(inplace=True),
+            nn.Linear(256, 16)
+        )
+
+        # Huffman + RS Codec 插件
+        self.codec = ChannelCodec(rs_nsym)
+
+        # 原 Channel Decoder
+        self.channel_decoder = ChannelDecoder(16, d_model, 512)
+
+        # 原 Decoder + 最后线性
+        self.decoder = Decoder(num_layers,
+                               trg_vocab_size,
+                               trg_max_len,
+                               d_model,
+                               num_heads,
+                               dff,
+                               dropout)
+        self.dense = nn.Linear(d_model, trg_vocab_size)
+
+    def forward(self,
+                src: torch.Tensor,
+                tgt: torch.Tensor,
+                src_mask:           torch.Tensor = None,
+                look_ahead_mask:    torch.Tensor = None,
+                tgt_padding_mask:   torch.Tensor = None) -> torch.Tensor:
+        # 1) 标准编码器
+        enc_out = self.encoder(src, src_mask)           # [B, T_src, d_model]
+
+        # 2) Channel Encoder → features
+        feats = self.channel_encoder(enc_out)           # [B, T_src, 16]
+
+        # 3) Huffman + RS 模拟信道（自带 encode+decode）
+        recon_feats = self.codec(feats)                 # [B, T_src, 16]
+
+        # 4) Channel Decoder
+        dec_in = self.channel_decoder(recon_feats)      # [B, T_src, d_model]
+
+        # 5) 标准解码器
+        dec_out = self.decoder(dec_in,
+                               enc_out,
+                               look_ahead_mask,
+                               tgt_padding_mask)        # [B, T_trg, d_model]
+
+        # 6) 输出 logits
+        logits = self.dense(dec_out)                    # [B, T_trg, trg_vocab_size]
+        return logits
     
         
         
